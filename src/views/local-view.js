@@ -62,23 +62,35 @@ export class LocalView {
     this.svg.appendChild(defs);
     this.svg.appendChild(glow);
 
-    // Sun + Moon.
-    this.svg.appendChild(circle(0, 0, 1, "#ffd95c"));
-    this.svg.appendChild(circle(mx, my, moonR, "#101418"));
+    // Sun + Moon. Dim the disks if the Sun is below the horizon — the
+    // bodies are still geometrically aligned, but no one at this location
+    // can see anything; rendering them at full brightness is misleading.
+    const visible = sunHor.altitude > 0;
+    this.svg.appendChild(circle(0, 0, 1, visible ? "#ffd95c" : "#3a2f10"));
+    this.svg.appendChild(circle(mx, my, moonR, visible ? "#101418" : "#1a1d22"));
 
-    // Labels.
     const sep = Math.hypot(mx, my);
-    const inUmbra = sep < (moonR - 1);   // total/annular geometric (radii units)
+    const inUmbra = sep < Math.abs(moonR - 1);
     const inPenumbra = sep < (moonR + 1);
-    const obscur = obscuration(sep, 1, moonR);
-    const status = inUmbra
-      ? (moonR >= 1 ? "Total" : "Annular")
-      : inPenumbra ? "Partial" : "Outside eclipse";
-    const altText = sunHor.altitude < 0
-      ? `Sun ${Math.abs(sunHor.altitude).toFixed(1)}° below horizon (not visible)`
-      : `Sun altitude ${sunHor.altitude.toFixed(1)}°`;
-    const label = text(-1.45, 1.4, `${status} · obscuration ${(obscur * 100).toFixed(1)}% · ${altText}`);
-    this.svg.appendChild(label);
+    const obscur = visible ? obscuration(sep, 1, moonR) : 0;
+
+    let status;
+    if (!visible) {
+      status = `Sun ${Math.abs(sunHor.altitude).toFixed(1)}° below horizon — eclipse not visible`;
+    } else if (inUmbra) {
+      status = moonR >= 1 ? "Total" : "Annular";
+    } else if (inPenumbra) {
+      status = "Partial";
+    } else {
+      status = "No eclipse at this location";
+    }
+
+    const altLine = visible ? `Sun altitude ${sunHor.altitude.toFixed(1)}°` : "";
+    const label1 = text(-1.45, 1.32, status);
+    this.svg.appendChild(label1);
+    if (visible) {
+      this.svg.appendChild(text(-1.45, 1.45, `obscuration ${(obscur * 100).toFixed(1)}% · ${altLine}`));
+    }
   }
 }
 
