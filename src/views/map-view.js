@@ -85,7 +85,7 @@ export class MapView {
         && peakIndex != null && samples.length > 1) {
       const tick = perpendicularTick(samples, peakIndex, eclipse.latitude, eclipse.longitude);
       if (tick) {
-        L.polyline(tick, { color: "#fff", weight: 2, opacity: 0.9 })
+        L.polyline(tick, { color: "#ff5c5c", weight: 2, opacity: 0.95 })
           .bindTooltip(
             `Greatest eclipse (${eclipse.kind}) — instant of maximum umbra. ` +
             `Totality occurs along the whole red line as the shadow sweeps Earth.`,
@@ -105,17 +105,29 @@ export class MapView {
       if (this.shadowMarker) { this.shadowMarker.remove(); this.shadowMarker = null; }
       return;
     }
-    const fill = kind === "annular" ? "#ffd75c" : "#ff5c5c";
+    const onPath = kind === "total" || kind === "annular";
+    const style = onPath
+      ? {
+          radius: 8, color: "#fff", weight: 2,
+          fillColor: kind === "annular" ? "#ffd75c" : "#ff5c5c",
+          fillOpacity: 0.9, opacity: 1,
+        }
+      : {
+          // Axis misses Earth — show the projection of the axis onto the
+          // surface as a hollow muted marker so it's clearly distinguished
+          // from points actually on the totality path.
+          radius: 6, color: "#888", weight: 2,
+          fillColor: "#444", fillOpacity: 0.4, opacity: 0.7,
+          dashArray: "3 2",
+        };
     if (!this.shadowMarker) {
-      this.shadowMarker = L.circleMarker([lat, lon], {
-        radius: 8, color: "#fff", weight: 2, fillColor: fill, fillOpacity: 0.9,
-      }).addTo(this.map);
+      this.shadowMarker = L.circleMarker([lat, lon], style).addTo(this.map);
       this.shadowMarker.bindTooltip(label || "", {
         permanent: true, direction: "top", offset: [0, -8], className: "shadow-time-tip",
       });
     } else {
       this.shadowMarker.setLatLng([lat, lon]);
-      this.shadowMarker.setStyle({ fillColor: fill });
+      this.shadowMarker.setStyle(style);
       if (label != null) this.shadowMarker.setTooltipContent(label);
     }
   }
@@ -138,7 +150,7 @@ function perpendicularTick(samples, peakIndex, lat0, lon0) {
   if (len < 1e-9) return null;
   const ux = dx / len, uy = dy / len;
   const px = -uy, py = ux;          // rotate 90°
-  const half = 0.6;                 // tick half-length, "flat" degrees
+  const half = 0.3;                 // tick half-length, "flat" degrees
   const dlat = py * half;
   const dlon = (px * half) / Math.max(0.05, cosLat);
   return [

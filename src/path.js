@@ -80,26 +80,46 @@ function sampleAt(t) {
   const bQ = 2 * ((M.x*D.x + M.y*D.y) / a2 + M.z*D.z / c2);
   const cQ = (M.x*M.x + M.y*M.y) / a2 + M.z*M.z / c2 - 1;
   const disc = bQ*bQ - 4*aQ*cQ;
-  if (disc < 0) {
-    return { time: t, lat: null, lon: null, kind: "none", axisDistKm: NaN };
+  const L = SMlen * R_MOON / (R_SUN - R_MOON); // umbral apex distance from Moon
+
+  if (disc >= 0) {
+    const sqrtDisc = Math.sqrt(disc);
+    const s = (-bQ - sqrtDisc) / (2 * aQ);
+    if (s > 0) {
+      const Pkm_eqd = add(M, scale(D, s));
+      const ll = projectToLatLon(Pkm_eqd, t);
+      const kind = s < L ? "total" : "annular";
+      return { time: t, lat: ll.lat, lon: ll.lon, kind, axisDistKm: 0 };
+    }
   }
-  const sqrtDisc = Math.sqrt(disc);
-  const s = (-bQ - sqrtDisc) / (2 * aQ);
-  if (s <= 0) return { time: t, lat: null, lon: null, kind: "none", axisDistKm: NaN };
 
-  const Pkm_eqd = add(M, scale(D, s));
+  // Axis misses Earth (or both intersections are behind the Moon). Compute
+  // the foot of perpendicular from Earth's centre to the axis, then project
+  // that point onto Earth's surface. This keeps the timeline marker on the
+  // map for the few minutes either side of the umbra arriving / leaving, so
+  // the user can see the shadow track even before/after the path proper.
+  const sFoot = -dot(M, D);
+  if (sFoot > 0) {
+    const foot = add(M, scale(D, sFoot));
+    const footLen = len(foot);
+    if (footLen > 0) {
+      const surf = scale(foot, R_EQ / footLen);   // sphere is fine here
+      const ll = projectToLatLon(surf, t);
+      return { time: t, lat: ll.lat, lon: ll.lon, kind: "outside", axisDistKm: footLen - R_EQ };
+    }
+  }
+  return { time: t, lat: null, lon: null, kind: "none", axisDistKm: NaN };
+}
 
-  // Rotate the surface point back to EQJ so VectorObserver can project to
-  // geographic lat/lon (it expects an EQJ vector with a time stamp).
+// Convert an EQD-frame km vector at time t into geographic lat/lon by
+// rotating back to EQJ and using VectorObserver (which applies sidereal
+// rotation using the AstroTime stamp).
+function projectToLatLon(Pkm_eqd, t) {
   const eqdToEqj = A.Rotation_EQD_EQJ(t);
   const pVecEqd = new A.Vector(Pkm_eqd.x / AU_KM, Pkm_eqd.y / AU_KM, Pkm_eqd.z / AU_KM, t);
   const pVecEqj = A.RotateVector(eqdToEqj, pVecEqd);
   const obs = A.VectorObserver(pVecEqj);
-
-  const L = SMlen * R_MOON / (R_SUN - R_MOON);
-  const kind = s < L ? "total" : "annular";
-
-  return { time: t, lat: obs.latitude, lon: obs.longitude, kind, axisDistKm: 0 };
+  return { lat: obs.latitude, lon: obs.longitude };
 }
 
 function utToDate(ut) {
