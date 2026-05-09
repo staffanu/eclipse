@@ -117,17 +117,16 @@ export class SceneView {
     this.sunLight.target = this.earth;
     this.scene.add(this.sunLight);
 
-    // Umbral shadow patch on Earth's surface — a small dark disc placed at
-    // the centerline lat/lon and oriented tangent to the surface, parented
-    // to Earth so it rotates with the planet. As you scrub the slider, the
-    // disc slides along Earth's surface and Earth turns under it, which is
-    // the only way to actually *see* the umbra sweeping in this view (the
-    // 3D cone alone passes through the planet without leaving a mark).
+    // Umbral shadow patch on Earth's surface — a small dark sphere half
+    // embedded in the surface at the centerline lat/lon. (A flat disc was
+    // invisible edge-on, which happens almost any time the camera sits to
+    // the side of the Sun-Moon-Earth axis.) Parented to Earth so it
+    // inherits the planet's sidereal rotation; as you scrub the slider
+    // the sphere walks along the surface while Earth turns under it —
+    // the visible "shadow sweeps from one side to the other" effect.
     this.shadowDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(0.04, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x000000, transparent: true, opacity: 0.7, side: THREE.DoubleSide,
-      }),
+      new THREE.SphereGeometry(0.035, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0x000000 }),
     );
     this.shadowDisc.visible = false;
     this.earth.add(this.shadowDisc);
@@ -248,10 +247,11 @@ export class SceneView {
     const sidereal = A.SiderealTime(t);
     this.earth.rotation.z = sidereal * Math.PI / 12;
 
-    // Position the shadow patch at the umbra's surface point. Its
-    // coordinates are in Earth-fixed lat/lon, so as a child of `earth`
-    // it ends up at the right world position automatically once Earth's
-    // rotation is applied above.
+    // Position the shadow patch at the umbra's surface point. Coordinates
+    // are in Earth-fixed lat/lon; as a child of `earth` the sphere ends up
+    // at the right world position automatically once Earth's rotation is
+    // applied above. Place its centre on the surface (half-embedded) so
+    // the visible cap sticks out and reads as a "spot" from any angle.
     const sample = shadowSampleAtTime(t);
     if (sample.lat == null) {
       this.shadowDisc.visible = false;
@@ -259,15 +259,11 @@ export class SceneView {
       this.shadowDisc.visible = true;
       const latR = sample.lat * Math.PI / 180;
       const lonR = sample.lon * Math.PI / 180;
-      const normal = new THREE.Vector3(
-        Math.cos(latR) * Math.cos(lonR),
-        Math.cos(latR) * Math.sin(lonR),
-        Math.sin(latR),
+      this.shadowDisc.position.set(
+        Math.cos(latR) * Math.cos(lonR) * EARTH_RADIUS_W,
+        Math.cos(latR) * Math.sin(lonR) * EARTH_RADIUS_W,
+        Math.sin(latR) * EARTH_RADIUS_W,
       );
-      this.shadowDisc.position.copy(normal).multiplyScalar(EARTH_RADIUS_W * 1.005);
-      // Orient the disc so its local +Z (its surface normal) points
-      // outward from Earth's centre — i.e. it lies tangent to the surface.
-      this.shadowDisc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
     }
   }
 
