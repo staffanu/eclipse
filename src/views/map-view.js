@@ -18,9 +18,10 @@ export class MapView {
     this.observerMarker = null;
 
     if (onClick) {
-      this.map.on("click", (e) => {
-        onClick(e.latlng.lat, normalizeLon(e.latlng.lng));
-      });
+      // Pass through the raw click latlng — the marker should land where the
+      // user actually clicked, even if they're viewing a wrapped world copy
+      // (lng outside [-180, 180]). Normalisation, if any, happens upstream.
+      this.map.on("click", (e) => onClick(e.latlng.lat, e.latlng.lng));
     }
   }
 
@@ -69,12 +70,18 @@ export class MapView {
       }).addTo(this.layer);
     }
 
-    // Greatest-eclipse marker.
+    // Greatest-eclipse marker. Note: totality occurs along the entire red
+    // line as the umbra sweeps across Earth over a few hours; this dot marks
+    // the *instant* of greatest eclipse (largest umbral diameter / longest
+    // local totality), which is one specific point on that line.
     if (eclipse.latitude != null && eclipse.longitude != null) {
       L.circleMarker([eclipse.latitude, eclipse.longitude], {
         radius: 6, color: "#fff", weight: 2, fillColor: "#ff5c5c", fillOpacity: 1,
       })
-        .bindTooltip(`Greatest eclipse (${eclipse.kind})`)
+        .bindTooltip(
+          `Greatest eclipse (${eclipse.kind}) — instant of maximum umbra. ` +
+          `Totality occurs along the whole red line as the shadow sweeps Earth.`,
+        )
         .addTo(this.layer);
       this.map.flyTo([eclipse.latitude, eclipse.longitude], 3, { duration: 0.6 });
     }

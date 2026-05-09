@@ -1,18 +1,18 @@
 // Compute the umbral / antumbral / penumbral footprints of a solar eclipse on
-// Earth's surface by intersecting the Moon's shadow cone with a spherical
-// Earth model.
+// Earth's surface by intersecting the Moon's shadow cone with the WGS84
+// ellipsoid model of Earth.
 //
-// Strategy: in J2000 mean-equator (EQJ) geocentric coordinates, the Sun and
-// Moon positions S, M are inertial vectors at instant t. The shadow axis is
-// the ray starting at M in the direction (M - S)/|M - S|. We solve for the
-// near-side intersection s* with a sphere of radius R_earth centred at the
-// origin, then call astronomy-engine's VectorObserver to convert the
-// resulting J2000 vector into geographic latitude and longitude (it accounts
-// for sidereal rotation using the AstroTime stamp on the vector).
+// We rotate the Sun and Moon vectors from the J2000 mean equator (EQJ) frame
+// into the true equator of date (EQD) frame so the ellipsoid axes align with
+// the coordinate axes (Earth's true rotation pole is +Z in EQD). We solve the
+// quadratic for ray-ellipsoid intersection there, then rotate the resulting
+// surface point back to EQJ and call astronomy-engine's VectorObserver to
+// project onto geographic latitude/longitude (it handles sidereal rotation
+// using the AstroTime stamp on the vector).
 //
 // Distinguishing total vs annular: the umbral cone has its apex at distance
 //     L = |M - S| * R_moon / (R_sun - R_moon)
-// from the Moon along the shadow axis. If the near-side intersection s* < L
+// from the Moon along the shadow axis. If the surface intersection s* < L
 // the umbra reaches the surface (Total). If s* > L the apex falls short and
 // observers near the centerline see an annular eclipse.
 
@@ -21,12 +21,10 @@ import * as A from "astronomy-engine";
 const AU_KM = 149_597_870.7;
 const R_SUN = 695_700.0;
 const R_MOON = 1_737.4;
-const R_EARTH = 6_378.137;
+// WGS84 ellipsoid axes (km).
+const R_EQ = 6_378.137;
+const R_POL = 6_356.752;
 
-// Sample the path between (peak - halfHours) and (peak + halfHours), one point
-// every stepMinutes. Returns:
-//   { samples: [{ time, lat, lon, kind, axisDistKm, sunAlt }], peakIndex }
-// where kind is one of "total", "annular", "none" (axis misses Earth).
 export function computeShadowPath(eclipse, opts = {}) {
   const halfHours = opts.halfHours ?? 3.0;
   const stepMinutes = opts.stepMinutes ?? 2.0;
@@ -34,63 +32,67 @@ export function computeShadowPath(eclipse, opts = {}) {
   const samples = [];
   const nSteps = Math.round((halfHours * 60) / stepMinutes);
   let peakIndex = 0;
-  let bestDist = Infinity;
+  let bestDt = Infinity;
 
   for (let i = -nSteps; i <= nSteps; i++) {
     const ut = peakUt + (i * stepMinutes) / (60 * 24);
     const t = A.MakeTime(utToDate(ut));
-    const sample = sampleAt(t);
-    samples.push(sample);
-    if (sample.kind !== "none" && sample.axisDistKm < bestDist) {
-      bestDist = sample.axisDistKm;
-      peakIndex = samples.length - 1;
-    }
+    samples.push(sampleAt(t));
+    const dt = Math.abs(ut - peakUt);
+    if (dt < bestDt) { bestDt = dt; peakIndex = samples.length - 1; }
   }
   return { samples, peakIndex };
 }
 
 function sampleAt(t) {
-  const sunV = A.GeoVector(A.Body.Sun, t, false);
-  const moonV = A.GeoMoon(t);
-  // Convert to km.
-  const S = scale(sunV, AU_KM);
-  const M = scale(moonV, AU_KM);
+  // Sun and Moon in J2000 equatorial geocentric coords (AU). We use the
+  // *apparent* Sun position (aberration corrected) because that's what
+  // determines where the Moon's shadow falls from an observer's perspective:
+  // light reaching the Moon now left the Sun ~8 minutes ago, so the shadow
+  // axis at this instant points from the apparent Sun through the Moon. Not
+  // doing this would offset the path by ~35 km.
+  const sunEqj = A.GeoVector(A.Body.Sun, t, true);
+  const moonEqj = A.GeoMoon(t);
+
+  // Rotate to equator-of-date so +Z is Earth's true rotation pole at this
+  // instant — that is what the WGS84 ellipsoid is aligned to.
+  const eqjToEqd = A.Rotation_EQJ_EQD(t);
+  const sunEqd = A.RotateVector(eqjToEqd, sunEqj);
+  const moonEqd = A.RotateVector(eqjToEqd, moonEqj);
+
+  const S = scale(sunEqd, AU_KM);
+  const M = scale(moonEqd, AU_KM);
   const SM = sub(M, S);
   const SMlen = len(SM);
   const D = scale(SM, 1 / SMlen); // unit shadow-axis direction
 
-  // Solve |M + s D|^2 = R_earth^2 for the smallest positive s.
-  const b = 2 * dot(M, D);
-  const c = dot(M, M) - R_EARTH * R_EARTH;
-  const disc = b * b - 4 * c;
+  // Solve (Mx + s Dx)^2 / a^2 + (My + s Dy)^2 / a^2 + (Mz + s Dz)^2 / c^2 = 1
+  // with a = R_EQ, c = R_POL.
+  const a2 = R_EQ * R_EQ, c2 = R_POL * R_POL;
+  const aQ = (D.x*D.x + D.y*D.y) / a2 + D.z*D.z / c2;
+  const bQ = 2 * ((M.x*D.x + M.y*D.y) / a2 + M.z*D.z / c2);
+  const cQ = (M.x*M.x + M.y*M.y) / a2 + M.z*M.z / c2 - 1;
+  const disc = bQ*bQ - 4*aQ*cQ;
   if (disc < 0) {
-    // Axis misses Earth — could still be a partial eclipse somewhere, but
-    // there is no centerline ground point at this instant.
     return { time: t, lat: null, lon: null, kind: "none", axisDistKm: NaN };
   }
   const sqrtDisc = Math.sqrt(disc);
-  const s1 = (-b - sqrtDisc) / 2;
-  const s2 = (-b + sqrtDisc) / 2;
-  const s = s1 > 0 ? s1 : s2;
+  const s = (-bQ - sqrtDisc) / (2 * aQ);
   if (s <= 0) return { time: t, lat: null, lon: null, kind: "none", axisDistKm: NaN };
 
-  // Surface point in J2000 km, then in AU as a Vector with the time stamp so
-  // VectorObserver can apply sidereal rotation correctly.
-  const Pkm = add(M, scale(D, s));
-  const Pvec = new A.Vector(Pkm.x / AU_KM, Pkm.y / AU_KM, Pkm.z / AU_KM, t);
-  const obs = A.VectorObserver(Pvec);
+  const Pkm_eqd = add(M, scale(D, s));
 
-  // Total vs annular: compare s to umbral apex distance L.
+  // Rotate the surface point back to EQJ so VectorObserver can project to
+  // geographic lat/lon (it expects an EQJ vector with a time stamp).
+  const eqdToEqj = A.Rotation_EQD_EQJ(t);
+  const pVecEqd = new A.Vector(Pkm_eqd.x / AU_KM, Pkm_eqd.y / AU_KM, Pkm_eqd.z / AU_KM, t);
+  const pVecEqj = A.RotateVector(eqdToEqj, pVecEqd);
+  const obs = A.VectorObserver(pVecEqj);
+
   const L = SMlen * R_MOON / (R_SUN - R_MOON);
   const kind = s < L ? "total" : "annular";
 
-  return {
-    time: t,
-    lat: obs.latitude,
-    lon: obs.longitude,
-    kind,
-    axisDistKm: 0, // by construction the axis hits the surface here
-  };
+  return { time: t, lat: obs.latitude, lon: obs.longitude, kind, axisDistKm: 0 };
 }
 
 function utToDate(ut) {
@@ -103,3 +105,4 @@ function add(a, b)   { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
 function sub(a, b)   { return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }; }
 function dot(a, b)   { return a.x * b.x + a.y * b.y + a.z * b.z; }
 function len(a)      { return Math.sqrt(dot(a, a)); }
+
