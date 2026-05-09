@@ -13,6 +13,7 @@
 
 import * as THREE from "three";
 import * as A from "astronomy-engine";
+import { shadowSampleAtTime } from "../path.js";
 
 const AU_KM = 149_597_870.7;
 const R_SUN_KM = 695_700.0;
@@ -86,10 +87,18 @@ export class SceneView {
   }
 
   _addBodies() {
-    this.sun = new THREE.Mesh(
-      new THREE.SphereGeometry(SUN_RADIUS_W, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffe27a }),
-    );
+    // Sun: rendered as a billboarded sprite with a radial-gradient texture
+    // rather than a 3D sphere. A sphere far from the optical axis would
+    // project to a noticeable ellipse ("egg shape") in perspective; a
+    // sprite always faces the camera and is always circular. This is fine
+    // for the Sun because we don't need real 3D shading on a self-luminous
+    // body.
+    this.sun = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: makeSunTexture(),
+      transparent: true,
+      depthWrite: false,
+    }));
+    this.sun.scale.set(SUN_RADIUS_W * 2.4, SUN_RADIUS_W * 2.4, 1);
     this.scene.add(this.sun);
 
     this.earth = new THREE.Mesh(
@@ -99,7 +108,7 @@ export class SceneView {
     this.scene.add(this.earth);
 
     this.moon = new THREE.Mesh(
-      new THREE.SphereGeometry(MOON_RADIUS_W, 32, 32),
+      new THREE.SphereGeometry(MOON_RADIUS_W, 48, 48),
       new THREE.MeshPhongMaterial({ color: 0xc8c0b0, emissive: 0x080705 }),
     );
     this.scene.add(this.moon);
@@ -107,6 +116,21 @@ export class SceneView {
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
     this.sunLight.target = this.earth;
     this.scene.add(this.sunLight);
+
+    // Umbral shadow patch on Earth's surface — a small dark disc placed at
+    // the centerline lat/lon and oriented tangent to the surface, parented
+    // to Earth so it rotates with the planet. As you scrub the slider, the
+    // disc slides along Earth's surface and Earth turns under it, which is
+    // the only way to actually *see* the umbra sweeping in this view (the
+    // 3D cone alone passes through the planet without leaving a mark).
+    this.shadowDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(0.04, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x000000, transparent: true, opacity: 0.7, side: THREE.DoubleSide,
+      }),
+    );
+    this.shadowDisc.visible = false;
+    this.earth.add(this.shadowDisc);
   }
 
   // Wireframe meridians, parallels and a polar axis on Earth — gives the
@@ -223,6 +247,28 @@ export class SceneView {
     // Sidereal Time in hours (0–24); convert to radians around +Z.
     const sidereal = A.SiderealTime(t);
     this.earth.rotation.z = sidereal * Math.PI / 12;
+
+    // Position the shadow patch at the umbra's surface point. Its
+    // coordinates are in Earth-fixed lat/lon, so as a child of `earth`
+    // it ends up at the right world position automatically once Earth's
+    // rotation is applied above.
+    const sample = shadowSampleAtTime(t);
+    if (sample.lat == null) {
+      this.shadowDisc.visible = false;
+    } else {
+      this.shadowDisc.visible = true;
+      const latR = sample.lat * Math.PI / 180;
+      const lonR = sample.lon * Math.PI / 180;
+      const normal = new THREE.Vector3(
+        Math.cos(latR) * Math.cos(lonR),
+        Math.cos(latR) * Math.sin(lonR),
+        Math.sin(latR),
+      );
+      this.shadowDisc.position.copy(normal).multiplyScalar(EARTH_RADIUS_W * 1.005);
+      // Orient the disc so its local +Z (its surface normal) points
+      // outward from Earth's centre — i.e. it lies tangent to the surface.
+      this.shadowDisc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    }
   }
 
   _fitCamera() {
@@ -351,3 +397,24 @@ function parallelPoints(r, latDeg) {
 }
 
 function mag(v) { return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
+
+// Generate a soft circular gradient texture for the Sun sprite — bright
+// pale-yellow core, falling off to a faint warm halo. Drawn into a canvas
+// once at construction and reused.
+function makeSunTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256; canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0.00, "rgba(255, 245, 200, 1)");
+  grad.addColorStop(0.40, "rgba(255, 226, 122, 1)");
+  grad.addColorStop(0.50, "rgba(255, 220, 110, 1)");
+  grad.addColorStop(0.55, "rgba(255, 180,  80, 0.5)");
+  grad.addColorStop(0.75, "rgba(255, 140,  60, 0.18)");
+  grad.addColorStop(1.00, "rgba(255, 100,  30, 0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
