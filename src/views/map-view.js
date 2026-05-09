@@ -96,30 +96,33 @@ export class MapView {
     }
   }
 
-  // Draw (or clear) the penumbral footprint as semi-transparent yellow
-  // cells. Each cell's opacity scales with the local obscuration so the
-  // strongest-coverage area stands out. Stored on its own Leaflet layer
-  // so the checkbox can show/hide it without rebuilding the path.
-  showFootprint(cells, latStep, lonStep, visible) {
+  // Draw (or clear) the penumbral footprint as a stack of contour polygons,
+  // each filled at low opacity so they additively colour the most-obscured
+  // areas more strongly. Owned on a separate layer so toggling visibility
+  // doesn't touch the centerline / band.
+  showFootprint(layers, visible) {
     this.footprintLayer.clearLayers();
-    if (!visible || !cells.length) return;
-    for (const c of cells) {
-      const opacity = 0.10 + 0.35 * Math.sqrt(c.obscuration);
-      L.rectangle(
-        [[c.lat - latStep / 2, c.lon - lonStep / 2],
-         [c.lat + latStep / 2, c.lon + lonStep / 2]],
-        { color: "#ffd75c", weight: 0, fillColor: "#ffd75c", fillOpacity: opacity }
-      ).addTo(this.footprintLayer);
+    if (!visible || !layers || !layers.length) return;
+    for (const layer of layers) {
+      for (const poly of layer.polygons) {
+        L.polygon(poly.map(p => [p.lat, p.lon]), {
+          color: "#ffd75c", weight: 0,
+          fillColor: "#ffd75c", fillOpacity: layer.fillOpacity,
+        }).addTo(this.footprintLayer);
+      }
     }
   }
 
-  // Pan the map to the centroid of the footprint cells. Used for partial
-  // eclipses, where there's no greatest-eclipse coordinate to fly to.
-  flyToFootprint(cells) {
-    if (!cells.length) return;
-    let sumLat = 0, sumLon = 0;
-    for (const c of cells) { sumLat += c.lat; sumLon += c.lon; }
-    this.map.flyTo([sumLat / cells.length, sumLon / cells.length], 3, { duration: 0.6 });
+  // Pan the map to the centroid of the outermost contour polygons. Used for
+  // partial eclipses where there's no greatest-eclipse coord to fly to.
+  flyToFootprint(layers) {
+    if (!layers || !layers.length) return;
+    const outer = layers[0].polygons;            // lowest threshold = largest region
+    if (!outer.length) return;
+    let sumLat = 0, sumLon = 0, n = 0;
+    for (const p of outer) for (const v of p) { sumLat += v.lat; sumLon += v.lon; n++; }
+    if (!n) return;
+    this.map.flyTo([sumLat / n, sumLon / n], 3, { duration: 0.6 });
   }
 
   // Move (or remove) the shadow-center marker driven by the time slider.

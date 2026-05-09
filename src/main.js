@@ -1,7 +1,7 @@
 import { installOverride, sigmaDeltaT, deltaT } from "./delta-t.js";
 import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore, nearestEclipseTo } from "./eclipse-search.js";
 import { computeShadowPath, shadowSampleAtTime } from "./path.js";
-import { computePartialFootprint, FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP } from "./footprint.js";
+import { computeFootprintLayers } from "./footprint.js";
 import { pathUncertaintyDeg, normalizeLon } from "./uncertainty.js";
 import { MapView } from "./views/map-view.js";
 import { SceneView } from "./views/scene-view.js";
@@ -28,9 +28,9 @@ const state = {
   observer: { lat: +els.obsLat.value, lon: +els.obsLon.value },
   // Time slider offset from peak, in minutes. 0 = exactly at peak.
   scrubMinutes: 0,
-  // Cached penumbral footprint cells for the current eclipse, so toggling
-  // the visibility checkbox doesn't have to recompute (~35 ms per eclipse).
-  footprintCells: [],
+  // Cached penumbral-footprint contour layers for the current eclipse,
+  // so toggling the visibility checkbox doesn't have to recompute.
+  footprintLayers: [],
   showFootprint: els.showFootprint.checked,
 };
 
@@ -71,15 +71,15 @@ function showEclipse(eclipse) {
   syncDateInput(eclipse);
   map.showEclipse(eclipse, samples, year, peakIndex);
 
-  // Compute the penumbral footprint once per eclipse and cache it; the
-  // checkbox just toggles drawing the cached cells.
-  state.footprintCells = computePartialFootprint(eclipse.peak.date);
-  map.showFootprint(state.footprintCells, FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP, state.showFootprint);
+  // Compute the penumbral-footprint contour layers once per eclipse and
+  // cache them; the checkbox just toggles drawing the cached layers.
+  state.footprintLayers = computeFootprintLayers(eclipse.peak.date);
+  map.showFootprint(state.footprintLayers, state.showFootprint);
 
   // For partial eclipses there's no greatest-eclipse coord to fly to, so
-  // pan the map to the centroid of the footprint instead.
+  // pan the map to the centroid of the outer footprint contour instead.
   const isPartial = eclipse.latitude == null || eclipse.longitude == null;
-  if (isPartial) map.flyToFootprint(state.footprintCells);
+  if (isPartial) map.flyToFootprint(state.footprintLayers);
 
   scene.showEclipse(eclipse);
   local.showEclipse(eclipse, state.observer.lat, state.observer.lon, currentScrubTime());
@@ -177,7 +177,7 @@ els.obsLon.addEventListener("change", () => setObserver(+els.obsLat.value, +els.
 
 els.showFootprint.addEventListener("change", safe(() => {
   state.showFootprint = els.showFootprint.checked;
-  map.showFootprint(state.footprintCells, FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP, state.showFootprint);
+  map.showFootprint(state.footprintLayers, state.showFootprint);
 }));
 
 els.timeSlider.addEventListener("input", safe(() => {
