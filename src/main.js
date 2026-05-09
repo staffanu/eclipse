@@ -59,10 +59,10 @@ function showEclipse(eclipse) {
   els.timeSlider.value = "0";
 
   const year = peakYear(eclipse);
-  const samples = computeShadowPath(eclipse, { halfHours: 3, stepMinutes: 2 }).samples;
+  const { samples, peakIndex } = computeShadowPath(eclipse, { halfHours: 3, stepMinutes: 2 });
 
   syncDateInput(eclipse);
-  map.showEclipse(eclipse, samples, year);
+  map.showEclipse(eclipse, samples, year, peakIndex);
   scene.showEclipse(eclipse);
   local.showEclipse(eclipse, state.observer.lat, state.observer.lon, currentScrubTime());
   updateScrub();  // place the shadow-center marker at peak
@@ -171,10 +171,22 @@ function formatScrub(minutes, t) {
   const mm = m % 60;
   const offset = minutes === 0
     ? "peak"
-    : `peak ${sign}${hh}h ${String(mm).padStart(2, "0")}m`;
-  const utc = t.toISOString().replace("T", " ").slice(0, 19) + " UT";
-  return `${offset}\n${utc}`;
+    : hh ? `peak ${sign}${hh}h ${String(mm).padStart(2, "0")}m`
+         : `peak ${sign}${mm}m`;
+  const utc = t.toISOString().slice(11, 19) + " UT";
+  return `${offset}  ·  ${utc}`;
 }
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
 safe(() => showEclipse(nearestEclipseTo(new Date(els.dateInput.value))))();
+
+// If the browser will hand us the user's coordinates (cached or freshly
+// granted), use them as the default observer. Otherwise we keep the HTML
+// fallback, Södermalm in Stockholm.
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (pos) => setObserver(pos.coords.latitude, pos.coords.longitude),
+    () => { /* denied / timed out — keep the fallback */ },
+    { timeout: 8000, maximumAge: 600_000 },
+  );
+}
