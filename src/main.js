@@ -1,7 +1,7 @@
 import { installOverride, sigmaDeltaT, deltaT } from "./delta-t.js";
 import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore, nearestEclipseTo } from "./eclipse-search.js";
 import { computeShadowPath } from "./path.js";
-import { pathUncertaintyDeg } from "./uncertainty.js";
+import { pathUncertaintyDeg, normalizeLon } from "./uncertainty.js";
 import { MapView } from "./views/map-view.js";
 import { SceneView } from "./views/scene-view.js";
 import { LocalView } from "./views/local-view.js";
@@ -29,11 +29,16 @@ const map = new MapView(document.getElementById("map"), {
 const scene = new SceneView(document.getElementById("scene"));
 const local = new LocalView(document.getElementById("local"));
 
-function setObserver(lat, lon) {
+// rawLon may come from a click on a wrapped Leaflet world copy and so can be
+// outside [-180, 180]. The marker is placed at the raw click position (so it
+// stays where the user clicked even with worldCopyJump), but state and the
+// input field hold the canonical wrap.
+function setObserver(lat, rawLon) {
+  const lon = normalizeLon(rawLon);
   state.observer = { lat, lon };
   els.obsLat.value = lat.toFixed(2);
   els.obsLon.value = lon.toFixed(2);
-  map.setObserver(lat, lon);
+  map.setObserver(lat, rawLon);
   if (state.eclipse) local.showEclipse(state.eclipse, lat, lon);
 }
 setObserver(state.observer.lat, state.observer.lon);
