@@ -175,10 +175,10 @@ els.dateInput.addEventListener("change", safe(() => {
 els.obsLat.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 els.obsLon.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 
-els.showFootprint.addEventListener("change", () => {
+els.showFootprint.addEventListener("change", safe(() => {
   state.showFootprint = els.showFootprint.checked;
   map.showFootprint(state.footprintCells, FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP, state.showFootprint);
-});
+}));
 
 els.timeSlider.addEventListener("input", safe(() => {
   state.scrubMinutes = +els.timeSlider.value;

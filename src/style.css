@@ -85,9 +85,20 @@ input[type="range"] {
 }
 
 input[type="checkbox"] {
-  width: auto;
+  /* Undo the dark-input styling above so we get a normal native checkbox
+     with a visible tick mark and reliable click handling. */
+  appearance: auto;
+  -webkit-appearance: auto;
+  -moz-appearance: auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
   margin: 0 8px 0 0;
-  vertical-align: middle;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
 .checkbox-label {
