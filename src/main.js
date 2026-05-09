@@ -155,9 +155,11 @@ function updateScrub() {
   if (!state.eclipse) return;
   const t = currentScrubTime();
   els.timeDisplay.textContent = formatScrub(state.scrubMinutes, t);
-  // Move (or hide) the shadow-center marker.
+  // Move (or hide) the shadow-center marker. The time tooltip pinned to
+  // the marker doubles as a "where is the umbra now" readout on the map.
   const sample = shadowSampleAtTime(t);
-  map.setShadowCenter(sample.lat, sample.lon, sample.kind);
+  const utLabel = t.toISOString().slice(11, 19) + " UT";
+  map.setShadowCenter(sample.lat, sample.lon, sample.kind, utLabel);
   // Refresh the local view at this instant for the chosen observer.
   local.showEclipse(state.eclipse, state.observer.lat, state.observer.lon, t);
 }
@@ -169,9 +171,9 @@ function formatScrub(minutes, t) {
   const mm = m % 60;
   const offset = minutes === 0
     ? "peak"
-    : `${sign}${hh}h ${String(mm).padStart(2, "0")}m`;
-  const utc = t.toISOString().replace("T", " ").slice(11, 19) + " UT";
-  return `${offset} · ${utc}`;
+    : `peak ${sign}${hh}h ${String(mm).padStart(2, "0")}m`;
+  const utc = t.toISOString().replace("T", " ").slice(0, 19) + " UT";
+  return `${offset}\n${utc}`;
 }
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.

@@ -95,8 +95,9 @@ export class MapView {
 
   // Move (or remove) the shadow-center marker driven by the time slider.
   // Pass lat/lon = null to hide it (e.g. when the axis misses Earth at the
-  // chosen instant).
-  setShadowCenter(lat, lon, kind) {
+  // chosen instant). The label is pinned next to the marker so the map
+  // doubles as a readout of "where is the umbra at the current scrub time".
+  setShadowCenter(lat, lon, kind, label) {
     if (lat == null || lon == null) {
       if (this.shadowMarker) { this.shadowMarker.remove(); this.shadowMarker = null; }
       return;
@@ -106,9 +107,13 @@ export class MapView {
       this.shadowMarker = L.circleMarker([lat, lon], {
         radius: 8, color: "#fff", weight: 2, fillColor: fill, fillOpacity: 0.9,
       }).addTo(this.map);
+      this.shadowMarker.bindTooltip(label || "", {
+        permanent: true, direction: "top", offset: [0, -8], className: "shadow-time-tip",
+      });
     } else {
       this.shadowMarker.setLatLng([lat, lon]);
       this.shadowMarker.setStyle({ fillColor: fill });
+      if (label != null) this.shadowMarker.setTooltipContent(label);
     }
   }
 }
