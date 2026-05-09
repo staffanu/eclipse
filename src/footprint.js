@@ -133,11 +133,24 @@ function extractContour({ lats, lons, grid }, threshold) {
 }
 
 // Stitch the loose contour line segments into closed polygons. Endpoints are
-// matched with a small key tolerance to absorb floating-point round-off.
+// matched with a small key tolerance to absorb floating-point round-off, and
+// with longitude normalised modulo 360° so segments at lon = +180 and
+// lon = −180 are recognised as the same physical point. Each polygon's
+// vertices are kept in *continuous* lon space (a vertex past the antimeridian
+// is represented as lon ± 360 rather than wrapped) so that the renderer can
+// later draw the polygon at multiple world-copy offsets without it leaping
+// across the map.
 function segmentsToPolygons(segments) {
   if (!segments.length) return [];
   const TOL = 1e-3;
-  const key = p => `${Math.round(p.lat / TOL)}_${Math.round(p.lon / TOL)}`;
+  const normLon = (lon) => {
+    let l = lon;
+    while (l >= 180) l -= 360;
+    while (l < -180) l += 360;
+    return l;
+  };
+  const key = p => `${Math.round(p.lat / TOL)}_${Math.round(normLon(p.lon) / TOL)}`;
+
   const map = new Map();
   for (let i = 0; i < segments.length; i++) {
     for (const p of segments[i]) {
@@ -150,7 +163,8 @@ function segmentsToPolygons(segments) {
   const polygons = [];
   for (let i = 0; i < segments.length; i++) {
     if (used.has(i)) continue;
-    const poly = [segments[i][0], segments[i][1]];
+    const poly = [segments[i][0]];
+    poly.push(adjacentLon(segments[i][1], segments[i][0].lon));
     used.add(i);
     let endK = key(poly[poly.length - 1]);
     let safety = 0;
@@ -160,15 +174,25 @@ function segmentsToPolygons(segments) {
       for (const c of candidates) if (!used.has(c)) { next = c; break; }
       if (next < 0) break;
       const [a, b] = segments[next];
-      const nextPt = key(a) === endK ? b : a;
-      poly.push(nextPt);
+      const raw = key(a) === endK ? b : a;
+      poly.push(adjacentLon(raw, poly[poly.length - 1].lon));
       used.add(next);
-      endK = key(nextPt);
+      endK = key(poly[poly.length - 1]);
       if (endK === key(poly[0])) break;
     }
     if (poly.length > 2) polygons.push(poly);
   }
   return polygons;
+}
+
+// Return a copy of `pt` with lon shifted by ±360° so that it is within ±180°
+// of `prevLon`. Keeps the polygon's lon trajectory continuous when segments
+// straddle the antimeridian.
+function adjacentLon(pt, prevLon) {
+  let lon = pt.lon;
+  while (lon - prevLon >  180) lon -= 360;
+  while (lon - prevLon < -180) lon += 360;
+  return { lat: pt.lat, lon };
 }
 
 function discOverlap(d, R, r) {
