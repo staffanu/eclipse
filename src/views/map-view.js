@@ -100,15 +100,23 @@ export class MapView {
   // each filled at low opacity so they additively colour the most-obscured
   // areas more strongly. Owned on a separate layer so toggling visibility
   // doesn't touch the centerline / band.
+  //
+  // Each polygon is rendered three times (offset −360°, 0°, +360°) so that
+  // a footprint whose vertex sequence crosses the antimeridian (vertices in
+  // continuous lon space, e.g. 170 → 200) shows up correctly regardless of
+  // which world copy the user is currently viewing.
   showFootprint(layers, visible) {
     this.footprintLayer.clearLayers();
     if (!visible || !layers || !layers.length) return;
     for (const layer of layers) {
       for (const poly of layer.polygons) {
-        L.polygon(poly.map(p => [p.lat, p.lon]), {
-          color: "#ffd75c", weight: 0,
-          fillColor: "#ffd75c", fillOpacity: layer.fillOpacity,
-        }).addTo(this.footprintLayer);
+        const base = poly.map(p => [p.lat, p.lon]);
+        for (const offset of [-360, 0, 360]) {
+          L.polygon(base.map(([lat, lon]) => [lat, lon + offset]), {
+            color: "#ffd75c", weight: 0,
+            fillColor: "#ffd75c", fillOpacity: layer.fillOpacity,
+          }).addTo(this.footprintLayer);
+        }
       }
     }
   }
