@@ -163,19 +163,22 @@ footer a { color: var(--accent); }
 
 main {
   display: grid;
-  grid-template-rows: 1.2fr 1fr;
+  grid-template-rows: 1.2fr auto 1fr;
   grid-template-columns: 1fr 1fr;
   grid-template-areas:
-    "map map"
+    "map  map"
+    "time time"
     "scene local";
   gap: 0;
   height: 100vh;
   overflow: hidden;
 }
 
-#map-panel   { grid-area: map; }
-#scene-panel { grid-area: scene; }
-#local-panel { grid-area: local; }
+#map-panel    { grid-area: map; }
+#time-control { grid-area: time; }
+#scene-panel  { grid-area: scene; }
+#local-panel  { grid-area: local; }
+#tab-nav      { display: none; }   /* tabs only on mobile */
 
 .panel {
   display: flex;
@@ -227,7 +230,7 @@ main {
   #sidebar {
     border-right: none;
     border-bottom: 1px solid var(--border);
-    max-height: 45dvh;
+    max-height: 35dvh;
     padding: 12px;
   }
 
@@ -238,17 +241,46 @@ main {
   /* Collapse the long footer on mobile to save space. */
   #sidebar footer { display: none; }
 
+  /* Tabs at the top of main, then either the map OR the scene+local pair. */
   main {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1.6fr 1fr 1fr;
-    grid-template-areas:
-      "map"
-      "scene"
-      "local";
+    display: flex;
+    flex-direction: column;
     height: auto;
-    min-height: 55dvh;
+    min-height: 65dvh;
   }
-  #scene-panel { border-right: none; border-bottom: 1px solid var(--border); }
+  #tab-nav {
+    display: flex;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  #tab-nav .tab {
+    flex: 1;
+    width: auto;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    color: var(--muted);
+    padding: 10px 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid transparent;
+  }
+  #tab-nav .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+
+  #time-control { flex: 0 0 auto; }
+  .panel { flex: 1; min-height: 0; }
+
+  /* Show panels based on the active tab. The Scene+Local tab shows them
+     stacked vertically (each takes half the remaining height). */
+  body[data-tab="map"]    #scene-panel,
+  body[data-tab="map"]    #local-panel,
+  body[data-tab="bottom"] #map-panel { display: none; }
+  body[data-tab="bottom"] #scene-panel { border-right: none; border-bottom: 1px solid var(--border); }
 
   .panel > header {
     font-size: 10px;

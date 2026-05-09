@@ -212,6 +212,20 @@ function formatScrub(minutes, t) {
   return `${offset} · ${utc}`;
 }
 
+// Tab navigation (only used at narrow viewports). Default to the map.
+function setActiveTab(tab) {
+  document.body.dataset.tab = tab;
+  document.querySelectorAll("#tab-nav .tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.tab === tab);
+  });
+  // Force the views to re-measure after the layout change.
+  window.dispatchEvent(new Event("resize"));
+}
+document.querySelectorAll("#tab-nav .tab").forEach(b => {
+  b.addEventListener("click", () => setActiveTab(b.dataset.tab));
+});
+setActiveTab("map");
+
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
 safe(() => showEclipse(nearestEclipseTo(new Date(els.dateInput.value))))();
 

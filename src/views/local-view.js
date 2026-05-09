@@ -62,6 +62,11 @@ export class LocalView {
 
     const sky = skyColor(sunHor.altitude);
     this.svg.appendChild(rect(-1.5, -1.5, 3, 3, sky));
+    // The SVG content is square; the panel is usually wider than tall, so
+    // letterbox bars appear on the sides. Painting the container with the
+    // same sky colour fills those bars and the colour reads continuously
+    // across the whole panel.
+    this.container.style.backgroundColor = sky;
 
     // Solar corona / glow during day and twilight, fading out below ~−6°.
     const glowOpacity = clamp((sunHor.altitude + 6) / 18, 0, 1);

@@ -238,43 +238,47 @@ export class SceneView {
     this._fitCamera();
   }
 
-  // Drive the scene from the time slider: place Sun & Moon for `time`,
-  // re-aim the shadow cones, and rotate Earth so the right longitude sits
-  // under the shadow axis.
+  // Drive the scene from the time slider. We render in an *Earth-fixed*
+  // frame: Earth is held still (continents pointed where they are at the
+  // current instant) and Sun and Moon are rotated by −sidereal time around
+  // +Z, so they appear to move westward across the sky as time advances.
+  // This is the frame the user mentally expects — "Earth still, umbra
+  // walking across the surface" — and the umbra disc visibly traces the
+  // centerline path from one side of Earth to the other as you scrub.
   updateForTime(time) {
     if (!this.eclipse) return;
     const t = A.MakeTime(time);
 
     const sunV  = A.GeoVector(A.Body.Sun, t, true);
     const moonV = A.GeoMoon(t);
+    const sidRad = A.SiderealTime(t) * Math.PI / 12;
+    // Rotate J2000 vectors by −sidereal angle around +Z to get Earth-fixed.
+    const cosS = Math.cos(-sidRad), sinS = Math.sin(-sidRad);
+    const ef = (v) => new THREE.Vector3(
+      v.x * cosS - v.y * sinS,
+      v.x * sinS + v.y * cosS,
+      v.z,
+    );
 
-    const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
-    const sunDir  = new THREE.Vector3(sunV.x,  sunV.y,  sunV.z).normalize();
+    const moonPos = ef(moonV).multiplyScalar(AU_KM * DIST_SCALE);
+    const sunDir  = ef(sunV).normalize();
     const sunPos  = sunDir.clone().multiplyScalar(SUN_DISPLAY_DIST);
 
     this.sun.position.copy(sunPos);
     this.moon.position.copy(moonPos);
     this.sunLight.position.copy(sunPos);
 
-    // Shadow axis: from Sun toward Moon, then beyond.
+    // Shadow axis (in Earth-fixed): from Sun toward Moon, then beyond.
     const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPos).normalize();
-
-    // Position both cones with their base at the Moon and their +Y axis
-    // along the shadow direction.
     placeAlongAxis(this.umbra, moonPos, shadowDir);
     placeAlongAxis(this.penumbra, moonPos, shadowDir);
 
-    // Rotate Earth so its prime meridian sits at the correct hour angle
-    // for the current instant. SiderealTime returns Greenwich Apparent
-    // Sidereal Time in hours (0–24); convert to radians around +Z.
-    const sidereal = A.SiderealTime(t);
-    this.earth.rotation.z = sidereal * Math.PI / 12;
+    // Earth doesn't rotate in Earth-fixed frame.
+    this.earth.rotation.z = 0;
 
-    // Position the shadow patch at the umbra's surface point. Coordinates
-    // are in Earth-fixed lat/lon; as a child of `earth` the sphere ends up
-    // at the right world position automatically once Earth's rotation is
-    // applied above. Place its centre on the surface (half-embedded) so
-    // the visible cap sticks out and reads as a "spot" from any angle.
+    // Shadow patch at the umbra's surface point. shadowSampleAtTime returns
+    // Earth-fixed lat/lon, which maps directly to world Cartesian here
+    // (Earth has no rotation to undo).
     const sample = shadowSampleAtTime(t);
     if (sample.lat == null) {
       this.shadowDisc.visible = false;
@@ -292,8 +296,18 @@ export class SceneView {
 
   _fitCamera() {
     if (!this.eclipse) return;
-    const moonV = A.GeoMoon(this.eclipse.peak);
-    const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    // Camera is positioned in the Earth-fixed frame at peak time, so the
+    // Moon's J2000 vector has to be rotated by −sidereal too.
+    const t = this.eclipse.peak;
+    const moonV = A.GeoMoon(t);
+    const sidRad = A.SiderealTime(t) * Math.PI / 12;
+    const cosS = Math.cos(-sidRad), sinS = Math.sin(-sidRad);
+    const moonPos = new THREE.Vector3(
+      moonV.x * cosS - moonV.y * sinS,
+      moonV.x * sinS + moonV.y * cosS,
+      moonV.z,
+    ).multiplyScalar(AU_KM * DIST_SCALE);
+
     const polar = new THREE.Vector3(0, 0, 1);
     let side = new THREE.Vector3().crossVectors(moonPos, polar);
     if (side.lengthSq() < 1e-6) side.set(0, 1, 0);
