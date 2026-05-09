@@ -44,6 +44,13 @@ export function computeShadowPath(eclipse, opts = {}) {
   return { samples, peakIndex };
 }
 
+// Compute the shadow-center sample at an arbitrary instant — used by the
+// time slider to position the moving marker without re-sampling the full
+// path each tick.
+export function shadowSampleAtTime(time) {
+  return sampleAt(A.MakeTime(time));
+}
+
 function sampleAt(t) {
   // Sun and Moon in J2000 equatorial geocentric coords (AU). We use the
   // *apparent* Sun position (aberration corrected) because that's what

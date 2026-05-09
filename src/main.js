@@ -1,6 +1,6 @@
 import { installOverride, sigmaDeltaT, deltaT } from "./delta-t.js";
 import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore, nearestEclipseTo } from "./eclipse-search.js";
-import { computeShadowPath } from "./path.js";
+import { computeShadowPath, shadowSampleAtTime } from "./path.js";
 import { pathUncertaintyDeg, normalizeLon } from "./uncertainty.js";
 import { MapView } from "./views/map-view.js";
 import { SceneView } from "./views/scene-view.js";
@@ -12,6 +12,8 @@ const els = {
   dateInput: document.getElementById("date-input"),
   prev: document.getElementById("prev-eclipse"),
   next: document.getElementById("next-eclipse"),
+  timeSlider: document.getElementById("time-slider"),
+  timeDisplay: document.getElementById("time-display"),
   obsLat: document.getElementById("obs-lat"),
   obsLon: document.getElementById("obs-lon"),
   info: document.getElementById("info"),
@@ -21,6 +23,8 @@ const els = {
 const state = {
   eclipse: null,
   observer: { lat: +els.obsLat.value, lon: +els.obsLon.value },
+  // Time slider offset from peak, in minutes. 0 = exactly at peak.
+  scrubMinutes: 0,
 };
 
 const map = new MapView(document.getElementById("map"), {
@@ -39,19 +43,29 @@ function setObserver(lat, rawLon) {
   els.obsLat.value = lat.toFixed(2);
   els.obsLon.value = lon.toFixed(2);
   map.setObserver(lat, rawLon);
-  if (state.eclipse) local.showEclipse(state.eclipse, lat, lon);
+  if (state.eclipse) local.showEclipse(state.eclipse, lat, lon, currentScrubTime());
+}
+
+function currentScrubTime() {
+  if (!state.eclipse) return null;
+  return new Date(state.eclipse.peak.date.getTime() + state.scrubMinutes * 60_000);
 }
 setObserver(state.observer.lat, state.observer.lon);
 
 function showEclipse(eclipse) {
   state.eclipse = eclipse;
+  // Reset the time slider for each new eclipse.
+  state.scrubMinutes = 0;
+  els.timeSlider.value = "0";
+
   const year = peakYear(eclipse);
   const samples = computeShadowPath(eclipse, { halfHours: 3, stepMinutes: 2 }).samples;
 
   syncDateInput(eclipse);
   map.showEclipse(eclipse, samples, year);
   scene.showEclipse(eclipse);
-  local.showEclipse(eclipse, state.observer.lat, state.observer.lon);
+  local.showEclipse(eclipse, state.observer.lat, state.observer.lon, currentScrubTime());
+  updateScrub();  // place the shadow-center marker at peak
 
   const dateStr = eclipse.peak.date.toISOString().replace("T", " ").slice(0, 19) + " UT";
   const lat = eclipse.latitude?.toFixed(2) ?? "--";
@@ -131,6 +145,34 @@ els.dateInput.addEventListener("change", safe(() => {
 
 els.obsLat.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 els.obsLon.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
+
+els.timeSlider.addEventListener("input", safe(() => {
+  state.scrubMinutes = +els.timeSlider.value;
+  updateScrub();
+}));
+
+function updateScrub() {
+  if (!state.eclipse) return;
+  const t = currentScrubTime();
+  els.timeDisplay.textContent = formatScrub(state.scrubMinutes, t);
+  // Move (or hide) the shadow-center marker.
+  const sample = shadowSampleAtTime(t);
+  map.setShadowCenter(sample.lat, sample.lon, sample.kind);
+  // Refresh the local view at this instant for the chosen observer.
+  local.showEclipse(state.eclipse, state.observer.lat, state.observer.lon, t);
+}
+
+function formatScrub(minutes, t) {
+  const sign = minutes < 0 ? "−" : minutes > 0 ? "+" : "";
+  const m = Math.abs(minutes);
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  const offset = minutes === 0
+    ? "peak"
+    : `${sign}${hh}h ${String(mm).padStart(2, "0")}m`;
+  const utc = t.toISOString().replace("T", " ").slice(11, 19) + " UT";
+  return `${offset} · ${utc}`;
+}
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
 safe(() => showEclipse(nearestEclipseTo(new Date(els.dateInput.value))))();

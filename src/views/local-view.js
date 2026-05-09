@@ -32,11 +32,11 @@ export class LocalView {
     container.appendChild(this.svg);
   }
 
-  showEclipse(eclipse, lat, lon) {
+  showEclipse(eclipse, lat, lon, time = null) {
     while (this.svg.firstChild) this.svg.removeChild(this.svg.firstChild);
 
     const observer = new A.Observer(lat, lon, 0);
-    const t = eclipse.peak;
+    const t = time ? A.MakeTime(time) : eclipse.peak;
 
     const sunEq = A.Equator(A.Body.Sun, t, observer, true, true);
     const moonEq = A.Equator(A.Body.Moon, t, observer, true, true);
