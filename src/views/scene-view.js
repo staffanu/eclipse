@@ -156,25 +156,57 @@ export class SceneView {
 
   _installDrag() {
     const dom = this.renderer.domElement;
-    let dragging = false, lx = 0, ly = 0;
-    dom.addEventListener("mousedown", (e) => { dragging = true; lx = e.clientX; ly = e.clientY; });
-    window.addEventListener("mouseup", () => { dragging = false; });
-    window.addEventListener("mousemove", (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - lx, dy = e.clientY - ly;
-      lx = e.clientX; ly = e.clientY;
-      const radius = this.camera.position.length();
+    dom.style.touchAction = "none"; // let us swallow touch gestures for orbit/pinch
+
+    // Pointer-based orbit (handles mouse, touch and pen via the same path).
+    const pointers = new Map(); // id -> {x, y}
+    let lastPinchDist = null;
+
+    const orbitFromDelta = (dx, dy) => {
       const spherical = new THREE.Spherical().setFromVector3(this.camera.position);
       spherical.theta -= dx * 0.005;
       spherical.phi = Math.min(Math.PI - 0.1, Math.max(0.1, spherical.phi - dy * 0.005));
       this.camera.position.setFromSpherical(spherical);
       this.camera.lookAt(0, 0, 0);
+    };
+    const zoomBy = (factor) => {
+      this.camera.position.multiplyScalar(factor);
+      this.camera.lookAt(0, 0, 0);
+    };
+
+    dom.addEventListener("pointerdown", (e) => {
+      dom.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      lastPinchDist = null;
     });
+    dom.addEventListener("pointermove", (e) => {
+      const prev = pointers.get(e.pointerId);
+      if (!prev) return;
+      const next = { x: e.clientX, y: e.clientY };
+      pointers.set(e.pointerId, next);
+
+      if (pointers.size === 1) {
+        orbitFromDelta(next.x - prev.x, next.y - prev.y);
+      } else if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (lastPinchDist != null && dist > 0) {
+          zoomBy(lastPinchDist / dist);
+        }
+        lastPinchDist = dist;
+      }
+    });
+    const release = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) lastPinchDist = null;
+    };
+    dom.addEventListener("pointerup", release);
+    dom.addEventListener("pointercancel", release);
+    dom.addEventListener("pointerleave", release);
+
     dom.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const f = e.deltaY > 0 ? 1.1 : 0.9;
-      this.camera.position.multiplyScalar(f);
-      this.camera.lookAt(0, 0, 0);
+      zoomBy(e.deltaY > 0 ? 1.1 : 0.9);
     }, { passive: false });
   }
 }
