@@ -18,6 +18,7 @@ const els = {
   obsLon: document.getElementById("obs-lon"),
   info: document.getElementById("info"),
   dtInfo: document.getElementById("dt-info"),
+  mapHeader: document.getElementById("map-header"),
 };
 
 const state = {
@@ -68,17 +69,30 @@ function showEclipse(eclipse) {
   updateScrub();  // place the shadow-center marker at peak
 
   const dateStr = eclipse.peak.date.toISOString().replace("T", " ").slice(0, 19) + " UT";
-  const lat = eclipse.latitude?.toFixed(2) ?? "--";
-  const lon = eclipse.longitude?.toFixed(2) ?? "--";
+  const isPartial = eclipse.latitude == null || eclipse.longitude == null;
+  const lat = eclipse.latitude?.toFixed(2) ?? "—";
+  const lon = eclipse.longitude?.toFixed(2) ?? "—";
   const obs = eclipse.obscuration != null
     ? `obscuration ${(eclipse.obscuration * 100).toFixed(1)}%`
     : "";
-  els.info.textContent =
-    `Kind:        ${eclipse.kind}\n` +
-    `Peak:        ${dateStr}\n` +
-    `Greatest:    ${lat}°, ${lon}°\n` +
-    (obs ? `             ${obs}\n` : "") +
-    `Year:        ${year}`;
+
+  let body = `Kind:        ${eclipse.kind}\nPeak:        ${dateStr}\n`;
+  if (isPartial) {
+    body += "(only the penumbra grazes Earth — no totality path)\n";
+  } else {
+    body += `Greatest:    ${lat}°, ${lon}°\n`;
+    if (obs) body += `             ${obs}\n`;
+  }
+  body += `Year:        ${year}`;
+  els.info.textContent = body;
+
+  // Update the map panel header so the user immediately sees why the map
+  // shows no centerline for partial eclipses.
+  els.mapHeader.textContent = isPartial
+    ? "Partial eclipse — only the penumbra grazes Earth (no totality path)"
+    : eclipse.kind === "annular"
+      ? "Global path — antumbral centerline with ΔT uncertainty band"
+      : "Global path — umbral centerline with ΔT uncertainty band";
 
   const sigma = sigmaDeltaT(year);
   const dt = deltaT(year);
