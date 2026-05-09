@@ -95,22 +95,37 @@ function syncDateInput(eclipse) {
   }
 }
 
-els.next.addEventListener("click", () => {
-  showEclipse(nextEclipseAfter(state.eclipse));
-});
+function refDate() {
+  return state.eclipse ? state.eclipse.peak.date : new Date(els.dateInput.value);
+}
 
-els.prev.addEventListener("click", () => {
-  const e = prevEclipseBefore(state.eclipse.peak.date);
+function safe(fn) {
+  return (...args) => {
+    try { fn(...args); }
+    catch (err) {
+      console.error(err);
+      els.info.textContent = "Error: " + err.message;
+    }
+  };
+}
+
+els.next.addEventListener("click", safe(() => {
+  const e = state.eclipse ? nextEclipseAfter(state.eclipse) : nextEclipseFrom(refDate());
+  showEclipse(e);
+}));
+
+els.prev.addEventListener("click", safe(() => {
+  const e = prevEclipseBefore(refDate());
   if (e) showEclipse(e);
-});
+}));
 
-els.dateInput.addEventListener("change", () => {
+els.dateInput.addEventListener("change", safe(() => {
   if (!els.dateInput.value) return;
   showEclipse(nearestEclipseTo(new Date(els.dateInput.value)));
-});
+}));
 
 els.obsLat.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 els.obsLon.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 
-// Initial eclipse.
-showEclipse(nearestEclipseTo(new Date(els.dateInput.value)));
+// Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
+safe(() => showEclipse(nearestEclipseTo(new Date(els.dateInput.value))))();
