@@ -81,8 +81,20 @@ input[type="range"] {
   padding: 0;
   background: transparent;
   border: none;
-  accent-color: var(--accent);
   height: 24px;
+}
+
+#time-display {
+  text-align: center;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: pre-line;
+  line-height: 1.35;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
 }
 
 button {
@@ -141,6 +153,19 @@ main {
 }
 
 #local svg { width: 100%; height: 100%; display: block; }
+
+/* Permanent label next to the moving shadow-center marker. */
+.shadow-time-tip {
+  background: rgba(13, 17, 23, 0.85);
+  color: #fff;
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.shadow-time-tip::before { display: none; }   /* hide the default tooltip arrow */
 
 /* --- mobile / narrow viewport --- */
 @media (max-width: 760px) {
