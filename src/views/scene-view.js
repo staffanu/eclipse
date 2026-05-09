@@ -116,16 +116,17 @@ export class SceneView {
     this.earth = new THREE.Mesh(earthGeo, earthMat);
 
     // Try to load a public Earth texture so continents are visible — that's
-    // the only way the user can perceive Earth rotating in the scene. If
-    // CORS or a network error prevents loading, the solid blue fallback
-    // remains in place.
+    // the only way the user can perceive Earth rotating in the scene. We
+    // use a jsDelivr URL because that CDN sets `Access-Control-Allow-Origin: *`
+    // for all assets, which `crossOrigin="anonymous"` requires (the original
+    // threejs.org-hosted texture failed CORS in some browsers).
     new THREE.TextureLoader()
       .setCrossOrigin("anonymous")
       .load(
-        "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg",
+        "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/earth_atmos_2048.jpg",
         (tex) => { tex.colorSpace = THREE.SRGBColorSpace; earthMat.map = tex; earthMat.needsUpdate = true; },
         undefined,
-        () => { /* keep solid blue fallback */ },
+        (err) => { console.warn("Earth texture failed to load:", err); },
       );
 
     this.scene.add(this.earth);
@@ -238,47 +239,41 @@ export class SceneView {
     this._fitCamera();
   }
 
-  // Drive the scene from the time slider. We render in an *Earth-fixed*
-  // frame: Earth is held still (continents pointed where they are at the
-  // current instant) and Sun and Moon are rotated by −sidereal time around
-  // +Z, so they appear to move westward across the sky as time advances.
-  // This is the frame the user mentally expects — "Earth still, umbra
-  // walking across the surface" — and the umbra disc visibly traces the
-  // centerline path from one side of Earth to the other as you scrub.
+  // Drive the scene from the time slider. We render in the J2000 inertial
+  // frame: Sun and Moon stay (approximately) fixed in space while Earth
+  // rotates around its +Z axis by Greenwich Apparent Sidereal Time. With
+  // continent texture visible, the user sees Earth turning underneath the
+  // (nearly fixed) shadow disc, which reads as the umbra sweeping across
+  // the surface as Earth rotates.
   updateForTime(time) {
     if (!this.eclipse) return;
     const t = A.MakeTime(time);
 
     const sunV  = A.GeoVector(A.Body.Sun, t, true);
     const moonV = A.GeoMoon(t);
-    const sidRad = A.SiderealTime(t) * Math.PI / 12;
-    // Rotate J2000 vectors by −sidereal angle around +Z to get Earth-fixed.
-    const cosS = Math.cos(-sidRad), sinS = Math.sin(-sidRad);
-    const ef = (v) => new THREE.Vector3(
-      v.x * cosS - v.y * sinS,
-      v.x * sinS + v.y * cosS,
-      v.z,
-    );
 
-    const moonPos = ef(moonV).multiplyScalar(AU_KM * DIST_SCALE);
-    const sunDir  = ef(sunV).normalize();
+    const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    const sunDir  = new THREE.Vector3(sunV.x,  sunV.y,  sunV.z).normalize();
     const sunPos  = sunDir.clone().multiplyScalar(SUN_DISPLAY_DIST);
 
     this.sun.position.copy(sunPos);
     this.moon.position.copy(moonPos);
     this.sunLight.position.copy(sunPos);
 
-    // Shadow axis (in Earth-fixed): from Sun toward Moon, then beyond.
+    // Shadow axis: from Sun toward Moon, then beyond.
     const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPos).normalize();
     placeAlongAxis(this.umbra, moonPos, shadowDir);
     placeAlongAxis(this.penumbra, moonPos, shadowDir);
 
-    // Earth doesn't rotate in Earth-fixed frame.
-    this.earth.rotation.z = 0;
+    // Earth's rotation around +Z is set from Greenwich Apparent Sidereal
+    // Time at this instant.
+    const sidereal = A.SiderealTime(t);
+    this.earth.rotation.z = sidereal * Math.PI / 12;
 
     // Shadow patch at the umbra's surface point. shadowSampleAtTime returns
-    // Earth-fixed lat/lon, which maps directly to world Cartesian here
-    // (Earth has no rotation to undo).
+    // Earth-fixed lat/lon; the disc is parented to the (rotating) Earth so
+    // setting its local position from those coords places it at the
+    // correct world location once Earth's rotation is applied.
     const sample = shadowSampleAtTime(t);
     if (sample.lat == null) {
       this.shadowDisc.visible = false;
@@ -296,18 +291,8 @@ export class SceneView {
 
   _fitCamera() {
     if (!this.eclipse) return;
-    // Camera is positioned in the Earth-fixed frame at peak time, so the
-    // Moon's J2000 vector has to be rotated by −sidereal too.
-    const t = this.eclipse.peak;
-    const moonV = A.GeoMoon(t);
-    const sidRad = A.SiderealTime(t) * Math.PI / 12;
-    const cosS = Math.cos(-sidRad), sinS = Math.sin(-sidRad);
-    const moonPos = new THREE.Vector3(
-      moonV.x * cosS - moonV.y * sinS,
-      moonV.x * sinS + moonV.y * cosS,
-      moonV.z,
-    ).multiplyScalar(AU_KM * DIST_SCALE);
-
+    const moonV = A.GeoMoon(this.eclipse.peak);
+    const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
     const polar = new THREE.Vector3(0, 0, 1);
     let side = new THREE.Vector3().crossVectors(moonPos, polar);
     if (side.lengthSq() < 1e-6) side.set(0, 1, 0);

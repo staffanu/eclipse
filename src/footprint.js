@@ -12,11 +12,12 @@ const AU_KM = 149_597_870.7;
 const R_SUN = 695_700.0;
 const R_MOON = 1_737.4;
 
-// Grid spacing. 2° gives ~16k samples per eclipse (~80 ms compute) and
-// catches narrow connections between regions of the penumbra that 3°
-// missed for some polar/wraparound eclipses.
-const LAT_STEP = 2;
-const LON_STEP = 2;
+// Grid spacing. 1.5° gives ~28 k samples per eclipse and catches the
+// narrow connecting cells in highly non-convex penumbral regions for
+// polar / wrap-around eclipses (e.g. 2057-07-01) where coarser grids
+// produced spurious gaps.
+const LAT_STEP = 1.5;
+const LON_STEP = 1.5;
 
 // Stacked contours: each polygon set draws at a low opacity, so where higher
 // obscuration overlaps lower obscuration the colour deepens — produces a
