@@ -173,8 +173,8 @@ function formatScrub(minutes, t) {
     ? "peak"
     : hh ? `peak ${sign}${hh}h ${String(mm).padStart(2, "0")}m`
          : `peak ${sign}${mm}m`;
-  const utc = t.toISOString().slice(11, 19) + " UT";
-  return `${offset}  ·  ${utc}`;
+  const utc = t.toISOString().slice(11, 19) + " UTC";
+  return `${offset} · ${utc}`;
 }
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
