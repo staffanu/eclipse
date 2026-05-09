@@ -20,6 +20,7 @@ const els = {
   info: document.getElementById("info"),
   dtInfo: document.getElementById("dt-info"),
   mapHeader: document.getElementById("map-header"),
+  showFootprint: document.getElementById("show-footprint"),
 };
 
 const state = {
@@ -27,6 +28,10 @@ const state = {
   observer: { lat: +els.obsLat.value, lon: +els.obsLon.value },
   // Time slider offset from peak, in minutes. 0 = exactly at peak.
   scrubMinutes: 0,
+  // Cached penumbral footprint cells for the current eclipse, so toggling
+  // the visibility checkbox doesn't have to recompute (~35 ms per eclipse).
+  footprintCells: [],
+  showFootprint: els.showFootprint.checked,
 };
 
 const map = new MapView(document.getElementById("map"), {
@@ -65,21 +70,22 @@ function showEclipse(eclipse) {
 
   syncDateInput(eclipse);
   map.showEclipse(eclipse, samples, year, peakIndex);
-  // For partial eclipses (no totality path) draw the penumbral footprint
-  // at peak so the map shows the region where any partial coverage is
-  // actually visible.
-  if (eclipse.latitude == null || eclipse.longitude == null) {
-    map.showPartialFootprint(
-      computePartialFootprint(eclipse.peak.date),
-      FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP,
-    );
-  }
+
+  // Compute the penumbral footprint once per eclipse and cache it; the
+  // checkbox just toggles drawing the cached cells.
+  state.footprintCells = computePartialFootprint(eclipse.peak.date);
+  map.showFootprint(state.footprintCells, FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP, state.showFootprint);
+
+  // For partial eclipses there's no greatest-eclipse coord to fly to, so
+  // pan the map to the centroid of the footprint instead.
+  const isPartial = eclipse.latitude == null || eclipse.longitude == null;
+  if (isPartial) map.flyToFootprint(state.footprintCells);
+
   scene.showEclipse(eclipse);
   local.showEclipse(eclipse, state.observer.lat, state.observer.lon, currentScrubTime());
   updateScrub();  // place the shadow-center marker at peak
 
   const dateStr = eclipse.peak.date.toISOString().replace("T", " ").slice(0, 19) + " UT";
-  const isPartial = eclipse.latitude == null || eclipse.longitude == null;
   const lat = eclipse.latitude?.toFixed(2) ?? "—";
   const lon = eclipse.longitude?.toFixed(2) ?? "—";
   const obs = eclipse.obscuration != null
@@ -168,6 +174,11 @@ els.dateInput.addEventListener("change", safe(() => {
 
 els.obsLat.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 els.obsLon.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
+
+els.showFootprint.addEventListener("change", () => {
+  state.showFootprint = els.showFootprint.checked;
+  map.showFootprint(state.footprintCells, FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP, state.showFootprint);
+});
 
 els.timeSlider.addEventListener("input", safe(() => {
   state.scrubMinutes = +els.timeSlider.value;

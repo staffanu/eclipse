@@ -14,6 +14,9 @@ export class MapView {
       { attribution: "© OpenStreetMap", maxZoom: 7 },
     ).addTo(this.map);
 
+    // Footprint layer is added before the main layer so the centerline,
+    // uncertainty band and markers always render on top of it.
+    this.footprintLayer = L.layerGroup().addTo(this.map);
     this.layer = L.layerGroup().addTo(this.map);
     this.observerMarker = null;
     // Shadow-center marker is owned separately so it can be updated by the
@@ -93,22 +96,29 @@ export class MapView {
     }
   }
 
-  // Draw the penumbral footprint (where any partial eclipse is visible at
-  // peak time) as semi-transparent yellow cells. Used for partial-only
-  // eclipses so the map isn't blank — the centerline doesn't exist for
-  // those, but the penumbra still touches Earth.
-  showPartialFootprint(cells, latStep, lonStep) {
-    if (!cells.length) return;
-    let sumLat = 0, sumLon = 0;
+  // Draw (or clear) the penumbral footprint as semi-transparent yellow
+  // cells. Each cell's opacity scales with the local obscuration so the
+  // strongest-coverage area stands out. Stored on its own Leaflet layer
+  // so the checkbox can show/hide it without rebuilding the path.
+  showFootprint(cells, latStep, lonStep, visible) {
+    this.footprintLayer.clearLayers();
+    if (!visible || !cells.length) return;
     for (const c of cells) {
-      const opacity = 0.15 + 0.4 * Math.sqrt(c.obscuration);
+      const opacity = 0.10 + 0.35 * Math.sqrt(c.obscuration);
       L.rectangle(
         [[c.lat - latStep / 2, c.lon - lonStep / 2],
          [c.lat + latStep / 2, c.lon + lonStep / 2]],
         { color: "#ffd75c", weight: 0, fillColor: "#ffd75c", fillOpacity: opacity }
-      ).addTo(this.layer);
-      sumLat += c.lat; sumLon += c.lon;
+      ).addTo(this.footprintLayer);
     }
+  }
+
+  // Pan the map to the centroid of the footprint cells. Used for partial
+  // eclipses, where there's no greatest-eclipse coordinate to fly to.
+  flyToFootprint(cells) {
+    if (!cells.length) return;
+    let sumLat = 0, sumLon = 0;
+    for (const c of cells) { sumLat += c.lat; sumLon += c.lon; }
     this.map.flyTo([sumLat / cells.length, sumLon / cells.length], 3, { duration: 0.6 });
   }
 

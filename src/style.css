@@ -84,6 +84,23 @@ input[type="range"] {
   height: 24px;
 }
 
+input[type="checkbox"] {
+  width: auto;
+  margin: 0 8px 0 0;
+  vertical-align: middle;
+}
+
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--text) !important;
+  font-size: 13px !important;
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+
 #time-control {
   display: flex;
   align-items: center;
