@@ -41,7 +41,7 @@ export class MapView {
     }
   }
 
-  showEclipse(eclipse, samples, year) {
+  showEclipse(eclipse, samples, year, peakIndex) {
     this.layer.clearLayers();
     // Drop the shadow-center marker too — it'll be re-placed by the next
     // setShadowCenter call.
@@ -76,19 +76,22 @@ export class MapView {
       }).addTo(this.layer);
     }
 
-    // Greatest-eclipse marker. Note: totality occurs along the entire red
-    // line as the umbra sweeps across Earth over a few hours; this dot marks
-    // the *instant* of greatest eclipse (largest umbral diameter / longest
-    // local totality), which is one specific point on that line.
-    if (eclipse.latitude != null && eclipse.longitude != null) {
-      L.circleMarker([eclipse.latitude, eclipse.longitude], {
-        radius: 6, color: "#fff", weight: 2, fillColor: "#ff5c5c", fillOpacity: 1,
-      })
-        .bindTooltip(
-          `Greatest eclipse (${eclipse.kind}) — instant of maximum umbra. ` +
-          `Totality occurs along the whole red line as the shadow sweeps Earth.`,
-        )
-        .addTo(this.layer);
+    // Greatest-eclipse marker. Totality occurs along the entire red line as
+    // the umbra sweeps across Earth over a few hours; this is just the
+    // *instant* of greatest eclipse (largest umbral diameter). Drawn as a
+    // small white tick perpendicular to the local path direction so it
+    // doesn't dominate the centerline.
+    if (eclipse.latitude != null && eclipse.longitude != null
+        && peakIndex != null && samples.length > 1) {
+      const tick = perpendicularTick(samples, peakIndex, eclipse.latitude, eclipse.longitude);
+      if (tick) {
+        L.polyline(tick, { color: "#fff", weight: 2, opacity: 0.9 })
+          .bindTooltip(
+            `Greatest eclipse (${eclipse.kind}) — instant of maximum umbra. ` +
+            `Totality occurs along the whole red line as the shadow sweeps Earth.`,
+          )
+          .addTo(this.layer);
+      }
       this.map.flyTo([eclipse.latitude, eclipse.longitude], 3, { duration: 0.6 });
     }
   }
@@ -116,6 +119,43 @@ export class MapView {
       if (label != null) this.shadowMarker.setTooltipContent(label);
     }
   }
+}
+
+// Construct a short tick perpendicular to the centerline at (lat0, lon0),
+// using the path direction estimated from the samples either side of
+// peakIndex. The tick half-length is ~0.6° measured in the local "flat"
+// metric (lat degrees and lon·cosLat degrees), which keeps it visually
+// perpendicular on the Mercator projection at any latitude.
+function perpendicularTick(samples, peakIndex, lat0, lon0) {
+  const before = nearbyValid(samples, peakIndex, -1) ?? samples[peakIndex];
+  const after  = nearbyValid(samples, peakIndex, +1) ?? samples[peakIndex];
+  if (!before || !after || before === after) return null;
+
+  const cosLat = Math.cos(lat0 * Math.PI / 180);
+  const dx = (after.lon - before.lon) * cosLat;
+  const dy = (after.lat - before.lat);
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return null;
+  const ux = dx / len, uy = dy / len;
+  const px = -uy, py = ux;          // rotate 90°
+  const half = 0.6;                 // tick half-length, "flat" degrees
+  const dlat = py * half;
+  const dlon = (px * half) / Math.max(0.05, cosLat);
+  return [
+    [lat0 - dlat, lon0 - dlon],
+    [lat0 + dlat, lon0 + dlon],
+  ];
+}
+
+// Walk away from index i in steps of dir until a sample with a valid lat is
+// found. Returns null if none is found within a few steps.
+function nearbyValid(samples, i, dir) {
+  for (let k = 1; k <= 5; k++) {
+    const j = i + dir * k;
+    if (j < 0 || j >= samples.length) return null;
+    if (samples[j].lat != null) return samples[j];
+  }
+  return null;
 }
 
 // Break the sample list into contiguous polylines wherever the path is missing

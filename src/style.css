@@ -84,17 +84,26 @@ input[type="range"] {
   height: 24px;
 }
 
+#time-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
 #time-display {
-  text-align: center;
-  font-size: 14px;
+  font-size: 11px;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
-  white-space: pre-line;
-  line-height: 1.35;
-  margin-bottom: 6px;
-  padding: 6px 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+#time-slider {
+  flex: 1;
+  width: auto;
 }
 
 button {

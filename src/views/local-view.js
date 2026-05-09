@@ -84,12 +84,14 @@ export class LocalView {
     this.svg.appendChild(circle(mx, my, moonR, sunHor.altitude > 0 ? "#101418" : "#2a2e36"));
 
     // If the geometric horizon happens to fall within the close-up zoom
-    // (sunset / sunrise), draw it as a faint band — purely cosmetic, the
-    // inset on the left is the authoritative horizon indicator.
+    // (sunset / sunrise), draw it as a faint line — no separate ground
+    // colour; the sky-color gradient on its own already conveys the
+    // time-of-day transition smoothly. Fade the line in/out to avoid a
+    // hard pop at the edges of the threshold.
     const horizonY = sunHor.altitude * 60 / sunR_arcmin;
-    if (Math.abs(horizonY) < 1.4) {
-      this.svg.appendChild(rect(-1.5, horizonY, 3, 1.5 - Math.max(horizonY, -1.5), "rgba(20,12,8,0.55)"));
-      this.svg.appendChild(line(-1.5, horizonY, 1.5, horizonY, "rgba(255,200,140,0.7)", 0.015));
+    const horizonFade = clamp((1.4 - Math.abs(horizonY)) / 0.4, 0, 1);
+    if (horizonFade > 0 && Math.abs(horizonY) < 1.4) {
+      this.svg.appendChild(line(-1.5, horizonY, 1.5, horizonY, `rgba(255,200,140,${0.7 * horizonFade})`, 0.015));
     }
 
     drawAltitudeInset(this.svg, sunHor.altitude, moonHor.altitude);
