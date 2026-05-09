@@ -47,13 +47,17 @@ export class MapView {
     // setShadowCenter call.
     if (this.shadowMarker) { this.shadowMarker.remove(); this.shadowMarker = null; }
 
+    // Use the same accent colour as the centerline for the band and the
+    // peak tick: red for total eclipses, yellow for annular ones.
+    const accent = eclipse.kind === "annular" ? "#ffd75c" : "#ff5c5c";
+
     // Uncertainty band: one small quadrilateral per path step. Adjacent
     // quads share edges, so they paint as one continuous shaded band.
     const drawBand = (quads, opacity) => {
       for (const q of quads) {
         L.polygon(q, {
-          color: "#ff5c5c", weight: 0,
-          fillColor: "#ff5c5c", fillOpacity: opacity,
+          color: accent, weight: 0,
+          fillColor: accent, fillOpacity: opacity,
         }).addTo(this.layer);
       }
     };
@@ -69,19 +73,19 @@ export class MapView {
       }).addTo(this.layer);
     }
 
-    // Greatest-eclipse marker. Totality occurs along the entire red line as
-    // the umbra sweeps across Earth over a few hours; this is just the
+    // Greatest-eclipse marker. Totality occurs along the entire centerline
+    // as the umbra sweeps across Earth over a few hours; this is just the
     // *instant* of greatest eclipse (largest umbral diameter). Drawn as a
-    // small white tick perpendicular to the local path direction so it
-    // doesn't dominate the centerline.
+    // small tick perpendicular to the local path direction in the same
+    // colour as the centerline so it reads as part of the path.
     if (eclipse.latitude != null && eclipse.longitude != null
         && peakIndex != null && samples.length > 1) {
       const tick = perpendicularTick(samples, peakIndex, eclipse.latitude, eclipse.longitude);
       if (tick) {
-        L.polyline(tick, { color: "#ff5c5c", weight: 2, opacity: 0.95 })
+        L.polyline(tick, { color: accent, weight: 2, opacity: 0.95 })
           .bindTooltip(
             `Greatest eclipse (${eclipse.kind}) — instant of maximum umbra. ` +
-            `Totality occurs along the whole red line as the shadow sweeps Earth.`,
+            `Totality occurs along the whole centerline as the shadow sweeps Earth.`,
           )
           .addTo(this.layer);
       }
