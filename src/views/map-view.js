@@ -93,6 +93,25 @@ export class MapView {
     }
   }
 
+  // Draw the penumbral footprint (where any partial eclipse is visible at
+  // peak time) as semi-transparent yellow cells. Used for partial-only
+  // eclipses so the map isn't blank — the centerline doesn't exist for
+  // those, but the penumbra still touches Earth.
+  showPartialFootprint(cells, latStep, lonStep) {
+    if (!cells.length) return;
+    let sumLat = 0, sumLon = 0;
+    for (const c of cells) {
+      const opacity = 0.15 + 0.4 * Math.sqrt(c.obscuration);
+      L.rectangle(
+        [[c.lat - latStep / 2, c.lon - lonStep / 2],
+         [c.lat + latStep / 2, c.lon + lonStep / 2]],
+        { color: "#ffd75c", weight: 0, fillColor: "#ffd75c", fillOpacity: opacity }
+      ).addTo(this.layer);
+      sumLat += c.lat; sumLon += c.lon;
+    }
+    this.map.flyTo([sumLat / cells.length, sumLon / cells.length], 3, { duration: 0.6 });
+  }
+
   // Move (or remove) the shadow-center marker driven by the time slider.
   // Pass lat/lon = null to hide it (e.g. when the axis misses Earth at the
   // chosen instant). The label is pinned next to the marker so the map

@@ -1,6 +1,7 @@
 import { installOverride, sigmaDeltaT, deltaT } from "./delta-t.js";
 import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore, nearestEclipseTo } from "./eclipse-search.js";
 import { computeShadowPath, shadowSampleAtTime } from "./path.js";
+import { computePartialFootprint, FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP } from "./footprint.js";
 import { pathUncertaintyDeg, normalizeLon } from "./uncertainty.js";
 import { MapView } from "./views/map-view.js";
 import { SceneView } from "./views/scene-view.js";
@@ -64,6 +65,15 @@ function showEclipse(eclipse) {
 
   syncDateInput(eclipse);
   map.showEclipse(eclipse, samples, year, peakIndex);
+  // For partial eclipses (no totality path) draw the penumbral footprint
+  // at peak so the map shows the region where any partial coverage is
+  // actually visible.
+  if (eclipse.latitude == null || eclipse.longitude == null) {
+    map.showPartialFootprint(
+      computePartialFootprint(eclipse.peak.date),
+      FOOTPRINT_LAT_STEP, FOOTPRINT_LON_STEP,
+    );
+  }
   scene.showEclipse(eclipse);
   local.showEclipse(eclipse, state.observer.lat, state.observer.lon, currentScrubTime());
   updateScrub();  // place the shadow-center marker at peak
@@ -86,10 +96,9 @@ function showEclipse(eclipse) {
   body += `Year:        ${year}`;
   els.info.textContent = body;
 
-  // Update the map panel header so the user immediately sees why the map
-  // shows no centerline for partial eclipses.
+  // Update the map panel header so the user immediately sees what's shown.
   els.mapHeader.textContent = isPartial
-    ? "Partial eclipse — only the penumbra grazes Earth (no totality path)"
+    ? "Partial eclipse — yellow region shows where any partial coverage is visible at peak"
     : eclipse.kind === "annular"
       ? "Global path — antumbral centerline with ΔT uncertainty band"
       : "Global path — umbral centerline with ΔT uncertainty band";
