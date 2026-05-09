@@ -1,5 +1,5 @@
 import L from "leaflet";
-import { uncertaintyBand, normalizeLon } from "../uncertainty.js";
+import { uncertaintyQuads, normalizeLon } from "../uncertainty.js";
 
 export class MapView {
   constructor(container, { onClick }) {
@@ -47,25 +47,18 @@ export class MapView {
     // setShadowCenter call.
     if (this.shadowMarker) { this.shadowMarker.remove(); this.shadowMarker = null; }
 
-    // Uncertainty band.
-    const band1 = uncertaintyBand(samples, year, 1);
-    const band3 = uncertaintyBand(samples, year, 3);
-    if (band3.length) {
-      L.polygon(splitOnAntimeridian(band3), {
-        color: "#ff5c5c",
-        weight: 0,
-        fillColor: "#ff5c5c",
-        fillOpacity: 0.08,
-      }).addTo(this.layer);
-    }
-    if (band1.length) {
-      L.polygon(splitOnAntimeridian(band1), {
-        color: "#ff5c5c",
-        weight: 0,
-        fillColor: "#ff5c5c",
-        fillOpacity: 0.18,
-      }).addTo(this.layer);
-    }
+    // Uncertainty band: one small quadrilateral per path step. Adjacent
+    // quads share edges, so they paint as one continuous shaded band.
+    const drawBand = (quads, opacity) => {
+      for (const q of quads) {
+        L.polygon(q, {
+          color: "#ff5c5c", weight: 0,
+          fillColor: "#ff5c5c", fillOpacity: opacity,
+        }).addTo(this.layer);
+      }
+    };
+    drawBand(uncertaintyQuads(samples, year, 3), 0.08);
+    drawBand(uncertaintyQuads(samples, year, 1), 0.18);
 
     // Centerline, broken when axis misses Earth or wraps the antimeridian.
     const segments = breakSegments(samples);

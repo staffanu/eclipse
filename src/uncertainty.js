@@ -19,20 +19,34 @@ export function pathUncertaintyDeg(year) {
   return (radians * 180) / Math.PI;
 }
 
-// Build a polygon (array of [lat, lon]) that wraps the central path with
-// +/-N-sigma uncertainty in longitude. If sigmas is 0 returns an empty array.
-export function uncertaintyBand(samples, year, sigmas = 1) {
+// Build the uncertainty band as an array of small quadrilaterals — one per
+// path step — instead of a single big polygon. The single-polygon approach
+// fails when the path crosses the antimeridian: splitting the ring at ±180°
+// leaves open curves that Leaflet closes with straight chords running from
+// the start of the path to the end, painting a spurious stripe.
+//
+// Each quad spans one (sample i, sample i+1) interval. Quads where the path
+// itself wraps the antimeridian, or where the ±dlon shift would push a
+// vertex over ±180°, are skipped — that produces a small gap in the band at
+// the wrap location, mirroring the path's own break there.
+export function uncertaintyQuads(samples, year, sigmas = 1) {
   const dlon = pathUncertaintyDeg(year) * sigmas;
   if (dlon <= 0) return [];
-  const fwd = [];
-  const back = [];
-  for (const s of samples) {
-    if (s.lat == null) continue;
-    fwd.push([s.lat, normalizeLon(s.lon + dlon)]);
-    back.push([s.lat, normalizeLon(s.lon - dlon)]);
+  const quads = [];
+  for (let i = 0; i < samples.length - 1; i++) {
+    const a = samples[i], b = samples[i + 1];
+    if (a.lat == null || b.lat == null) continue;
+    if (Math.abs(a.lon - b.lon) > 180) continue;             // path itself wraps here
+    if (a.lon + dlon > 180 || a.lon - dlon < -180) continue; // shifted vertex would wrap
+    if (b.lon + dlon > 180 || b.lon - dlon < -180) continue;
+    quads.push([
+      [a.lat, a.lon - dlon],
+      [b.lat, b.lon - dlon],
+      [b.lat, b.lon + dlon],
+      [a.lat, a.lon + dlon],
+    ]);
   }
-  back.reverse();
-  return [...fwd, ...back];
+  return quads;
 }
 
 export function normalizeLon(lon) {
