@@ -194,8 +194,9 @@ function updateScrub() {
   const sample = shadowSampleAtTime(t);
   const utLabel = t.toISOString().slice(11, 19) + " UT";
   map.setShadowCenter(sample.lat, sample.lon, sample.kind, utLabel);
-  // Refresh the local view at this instant for the chosen observer.
+  // Refresh the local view and the 3D scene at this instant.
   local.showEclipse(state.eclipse, state.observer.lat, state.observer.lon, t);
+  scene.updateForTime(t);
 }
 
 function formatScrub(minutes, t) {

@@ -1,35 +1,51 @@
-// 3D Sun-Earth-Moon scene at the eclipse peak.
+// 3D Sun-Earth-Moon scene driven by the time slider.
 //
-// Bodies are placed in a frame centred on Earth, with positions taken from
-// astronomy-engine's J2000 geocentric vectors and scaled into world units that
-// are visible at once. We exaggerate body radii so they're not invisible
-// dots, but keep the shadow geometry qualitatively correct: the Moon really
-// is on the Sun-Earth line at peak, so the cast shadow points the right way.
+// Positions come from astronomy-engine in J2000 equatorial coordinates and
+// are placed directly in the Three.js world frame, so world +Z is the
+// celestial pole. Distances use a single linear scale (1 km → 1/80000
+// world units) but body radii are exaggerated for visibility — the umbra
+// and penumbra cones use the actual longitudinal scale (so the apex sits
+// at the right distance along the axis) but are rendered with the same
+// transverse exaggeration as the Moon, which makes them visible without
+// distorting where the shadow reaches. Earth's rotation about its own
+// axis is set from Greenwich apparent sidereal time at the slider's
+// instant, so dragging the slider sweeps the shadow across the surface.
 
 import * as THREE from "three";
 import * as A from "astronomy-engine";
 
 const AU_KM = 149_597_870.7;
+const R_SUN_KM = 695_700.0;
+const R_MOON_KM = 1_737.4;
 
 // Distance scale (km -> world units). The Moon is ~384,400 km away; placing
 // it at world distance ~5 keeps everything navigable.
 const DIST_SCALE = 1 / 80_000;
-// Bodies are scaled up (more so for the smaller bodies) so they're visible.
+
+// Body radii — exaggerated so the bodies are visible at the chosen distance
+// scale. The shadow cones share the Moon's exaggeration on the transverse
+// axis so they line up with Moon's silhouette at the base.
 const SUN_RADIUS_W = 1.2;
-const EARTH_RADIUS_W = 0.4;
+const EARTH_RADIUS_W = 0.32;
 const MOON_RADIUS_W = 0.18;
+
+// Sun is capped at this world distance — the actual scaled distance (~1850)
+// would push it absurdly far off-screen.
+const SUN_DISPLAY_DIST = 60;
 
 export class SceneView {
   constructor(container) {
     this.container = container;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000005);
+    this.eclipse = null;
 
     const w = container.clientWidth || 800;
     const h = container.clientHeight || 400;
 
-    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-    this.camera.position.set(2.5, 1.5, 6);
+    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.05, 5000);
+    this.camera.up.set(0, 0, 1);   // J2000 +Z = celestial north pole
+    this.camera.position.set(2.5, -6, 2);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -37,7 +53,19 @@ export class SceneView {
     this.renderer.setSize(w, h);
     container.appendChild(this.renderer.domElement);
 
-    // Stars backdrop.
+    this._addStars();
+    this._addBodies();
+    this._addEarthMarkers();
+    this._addShadowCones();
+
+    this._loop = this._loop.bind(this);
+    requestAnimationFrame(this._loop);
+
+    window.addEventListener("resize", () => this._resize());
+    this._installDrag();
+  }
+
+  _addStars() {
     const starGeo = new THREE.BufferGeometry();
     const starCount = 800;
     const positions = new Float32Array(starCount * 3);
@@ -46,7 +74,7 @@ export class SceneView {
       const u = Math.random(), v = Math.random();
       const theta = 2 * Math.PI * u;
       const phi = Math.acos(2 * v - 1);
-      positions[3*i] = r * Math.sin(phi) * Math.cos(theta);
+      positions[3*i]   = r * Math.sin(phi) * Math.cos(theta);
       positions[3*i+1] = r * Math.sin(phi) * Math.sin(theta);
       positions[3*i+2] = r * Math.cos(phi);
     }
@@ -55,8 +83,9 @@ export class SceneView {
       starGeo,
       new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: false })
     ));
+  }
 
-    // Bodies.
+  _addBodies() {
     this.sun = new THREE.Mesh(
       new THREE.SphereGeometry(SUN_RADIUS_W, 32, 32),
       new THREE.MeshBasicMaterial({ color: 0xffe27a }),
@@ -65,7 +94,7 @@ export class SceneView {
 
     this.earth = new THREE.Mesh(
       new THREE.SphereGeometry(EARTH_RADIUS_W, 48, 48),
-      new THREE.MeshPhongMaterial({ color: 0x2255aa, emissive: 0x041020, shininess: 8 }),
+      new THREE.MeshPhongMaterial({ color: 0x1a4878, emissive: 0x031020, shininess: 8 }),
     );
     this.scene.add(this.earth);
 
@@ -75,73 +104,144 @@ export class SceneView {
     );
     this.scene.add(this.moon);
 
-    // Sun light source for shading Earth/Moon.
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+    this.sunLight.target = this.earth;
     this.scene.add(this.sunLight);
+  }
 
-    // Visualised umbra cone (just a thin line through Moon to Earth).
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xff5555, transparent: true, opacity: 0.7 });
-    this.shadowLine = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-      lineMat,
+  // Wireframe meridians, parallels and a polar axis on Earth — gives the
+  // sphere visible features so you can actually see Earth turning under the
+  // shadow when the time slider moves.
+  _addEarthMarkers() {
+    const wire = new THREE.LineBasicMaterial({ color: 0x77a8d8, transparent: true, opacity: 0.45 });
+    const accent = new THREE.LineBasicMaterial({ color: 0xff9a7a, transparent: true, opacity: 0.85 });
+    const r = EARTH_RADIUS_W * 1.005;
+
+    // Equator.
+    this.earth.add(line(circlePoints(r, "equator"), accent));
+    // Prime meridian (lon = 0).
+    this.earth.add(line(meridianPoints(r, 0), accent));
+    // Other meridians every 30°.
+    for (let lon = 30; lon < 360; lon += 30) {
+      this.earth.add(line(meridianPoints(r, lon), wire));
+    }
+    // Parallels every 30°.
+    for (const lat of [-60, -30, 30, 60]) {
+      this.earth.add(line(parallelPoints(r, lat), wire));
+    }
+    // Polar axis through Earth.
+    const axisGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, -EARTH_RADIUS_W * 1.6),
+      new THREE.Vector3(0, 0,  EARTH_RADIUS_W * 1.6),
+    ]);
+    this.earth.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({
+      color: 0xffd75c, transparent: true, opacity: 0.6,
+    })));
+  }
+
+  // Two cones extend from the Moon along the shadow axis: the umbra (dark
+  // red) narrows to its apex; the penumbra (pale yellow) flares outward.
+  // Both share the same axis and base position so they line up at the Moon.
+  _addShadowCones() {
+    this.umbra = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({
+        color: 0x8a3030, transparent: true, opacity: 0.30, side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
     );
-    this.scene.add(this.shadowLine);
-
-    this._spin = 0;
-    this._lastFrame = performance.now();
-    this._loop = this._loop.bind(this);
-    requestAnimationFrame(this._loop);
-
-    window.addEventListener("resize", () => this._resize());
-    this._installDrag();
+    this.penumbra = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({
+        color: 0xc9a04a, transparent: true, opacity: 0.10, side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    // Penumbra first so umbra paints over it where they overlap.
+    this.scene.add(this.penumbra);
+    this.scene.add(this.umbra);
   }
 
   showEclipse(eclipse) {
+    this.eclipse = eclipse;
+
+    // Build cone geometry once per eclipse — Sun-Moon distance barely
+    // changes within the ±2 h slider range, so the cone shape can be
+    // reused across all scrub times for this eclipse.
     const t = eclipse.peak;
-    const sunV = A.GeoVector(A.Body.Sun, t, false);     // AU, J2000 EQJ
-    const moonV = A.GeoMoon(t);                          // AU, J2000 EQJ
+    const sunV  = A.GeoVector(A.Body.Sun, t, true);
+    const moonV = A.GeoMoon(t);
+    const sunMoonKm = mag({
+      x: (moonV.x - sunV.x) * AU_KM,
+      y: (moonV.y - sunV.y) * AU_KM,
+      z: (moonV.z - sunV.z) * AU_KM,
+    });
+    const L_km = sunMoonKm * R_MOON_KM / (R_SUN_KM - R_MOON_KM);
+    const L_w  = L_km * DIST_SCALE;
+    const penLen_w = L_w * 1.4;
+    const penTopRadius_w = MOON_RADIUS_W * (1 + penLen_w / L_w);
 
-    // Place bodies using J2000 geocentric vectors. Earth is at origin.
-    const sunPos = new THREE.Vector3(sunV.x, sunV.y, sunV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    this.umbra.geometry.dispose();
+    this.umbra.geometry = new THREE.ConeGeometry(MOON_RADIUS_W, L_w, 64, 1, true);
+    this.penumbra.geometry.dispose();
+    this.penumbra.geometry = new THREE.CylinderGeometry(
+      penTopRadius_w, MOON_RADIUS_W, penLen_w, 64, 1, true,
+    );
+
+    this.updateForTime(eclipse.peak.date);
+    this._fitCamera();
+  }
+
+  // Drive the scene from the time slider: place Sun & Moon for `time`,
+  // re-aim the shadow cones, and rotate Earth so the right longitude sits
+  // under the shadow axis.
+  updateForTime(time) {
+    if (!this.eclipse) return;
+    const t = A.MakeTime(time);
+
+    const sunV  = A.GeoVector(A.Body.Sun, t, true);
+    const moonV = A.GeoMoon(t);
+
     const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
-
-    // Cap Sun distance for usability — keep Sun "very far" but not absurd.
-    const sunDir = sunPos.clone().normalize();
-    sunPos.copy(sunDir).multiplyScalar(60);
+    const sunDir  = new THREE.Vector3(sunV.x,  sunV.y,  sunV.z).normalize();
+    const sunPos  = sunDir.clone().multiplyScalar(SUN_DISPLAY_DIST);
 
     this.sun.position.copy(sunPos);
     this.moon.position.copy(moonPos);
     this.sunLight.position.copy(sunPos);
-    this.sunLight.target = this.earth;
 
-    // Shadow line from Moon through Earth (extending past).
-    const dir = this.earth.position.clone().sub(moonPos).normalize();
-    const lineEnd = moonPos.clone().add(dir.clone().multiplyScalar(8));
-    this.shadowLine.geometry.setFromPoints([moonPos, lineEnd]);
-    this.shadowLine.geometry.attributesNeedUpdate = true;
+    // Shadow axis: from Sun toward Moon, then beyond.
+    const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPos).normalize();
 
-    this._fitCamera(moonPos);
+    // Position both cones with their base at the Moon and their +Y axis
+    // along the shadow direction.
+    placeAlongAxis(this.umbra, moonPos, shadowDir);
+    placeAlongAxis(this.penumbra, moonPos, shadowDir);
+
+    // Rotate Earth so its prime meridian sits at the correct hour angle
+    // for the current instant. SiderealTime returns Greenwich Apparent
+    // Sidereal Time in hours (0–24); convert to radians around +Z.
+    const sidereal = A.SiderealTime(t);
+    this.earth.rotation.z = sidereal * Math.PI / 12;
   }
 
-  _fitCamera(moonPos) {
-    // Position camera offset perpendicular to the Moon-Sun line so we see the
-    // alignment.
-    const moonDir = moonPos.clone().normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const side = new THREE.Vector3().crossVectors(moonDir, up).normalize();
-    const cam = moonPos.clone().multiplyScalar(0.4)
-      .addScaledVector(side, 4)
-      .addScaledVector(up, 2);
-    this.camera.position.copy(cam);
-    this.camera.lookAt(0, 0, 0);
+  _fitCamera() {
+    if (!this.eclipse) return;
+    const moonV = A.GeoMoon(this.eclipse.peak);
+    const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    const polar = new THREE.Vector3(0, 0, 1);
+    let side = new THREE.Vector3().crossVectors(moonPos, polar);
+    if (side.lengthSq() < 1e-6) side.set(0, 1, 0);
+    side.normalize();
+    const midpoint = moonPos.clone().multiplyScalar(0.5);
+    this.camera.position.copy(midpoint
+      .clone()
+      .addScaledVector(side, 7)
+      .addScaledVector(polar, 1.8));
+    this.camera.lookAt(midpoint);
   }
 
   _loop() {
-    const now = performance.now();
-    const dt = (now - this._lastFrame) / 1000;
-    this._lastFrame = now;
-    this._spin += dt * 0.05;
-    this.earth.rotation.y = this._spin;
     this.renderer.render(this.scene, this.camera);
     requestAnimationFrame(this._loop);
   }
@@ -156,13 +256,12 @@ export class SceneView {
 
   _installDrag() {
     const dom = this.renderer.domElement;
-    dom.style.touchAction = "none"; // let us swallow touch gestures for orbit/pinch
-
-    // Pointer-based orbit (handles mouse, touch and pen via the same path).
-    const pointers = new Map(); // id -> {x, y}
+    dom.style.touchAction = "none";
+    const pointers = new Map();
     let lastPinchDist = null;
 
     const orbitFromDelta = (dx, dy) => {
+      // Orbit the camera around the centre of the scene (origin = Earth).
       const spherical = new THREE.Spherical().setFromVector3(this.camera.position);
       spherical.theta -= dx * 0.005;
       spherical.phi = Math.min(Math.PI - 0.1, Math.max(0.1, spherical.phi - dy * 0.005));
@@ -184,15 +283,12 @@ export class SceneView {
       if (!prev) return;
       const next = { x: e.clientX, y: e.clientY };
       pointers.set(e.pointerId, next);
-
       if (pointers.size === 1) {
         orbitFromDelta(next.x - prev.x, next.y - prev.y);
       } else if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         const dist = Math.hypot(a.x - b.x, a.y - b.y);
-        if (lastPinchDist != null && dist > 0) {
-          zoomBy(lastPinchDist / dist);
-        }
+        if (lastPinchDist != null && dist > 0) zoomBy(lastPinchDist / dist);
         lastPinchDist = dist;
       }
     });
@@ -203,10 +299,55 @@ export class SceneView {
     dom.addEventListener("pointerup", release);
     dom.addEventListener("pointercancel", release);
     dom.addEventListener("pointerleave", release);
-
     dom.addEventListener("wheel", (e) => {
       e.preventDefault();
       zoomBy(e.deltaY > 0 ? 1.1 : 0.9);
     }, { passive: false });
   }
 }
+
+// Place a Three.js mesh whose geometry has its central axis along local +Y
+// so that the geometry's base sits at `basePoint` and the +Y axis points
+// along `axisDir` (i.e. apex / +height end is in `axisDir` from base).
+function placeAlongAxis(mesh, basePoint, axisDir) {
+  const height = mesh.geometry.parameters.height;
+  mesh.position.copy(basePoint).addScaledVector(axisDir, height / 2);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axisDir);
+}
+
+// --- helpers for Earth's wireframe markers ---
+function line(points, material) {
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material);
+}
+function circlePoints(r, kind) {
+  const pts = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0));
+  }
+  return pts;
+}
+function meridianPoints(r, lonDeg) {
+  const lon = lonDeg * Math.PI / 180;
+  const cosLon = Math.cos(lon), sinLon = Math.sin(lon);
+  const pts = [];
+  for (let i = 0; i <= 64; i++) {
+    const lat = (i / 64 - 0.5) * Math.PI;
+    const cosLat = Math.cos(lat);
+    pts.push(new THREE.Vector3(cosLat * cosLon * r, cosLat * sinLon * r, Math.sin(lat) * r));
+  }
+  return pts;
+}
+function parallelPoints(r, latDeg) {
+  const lat = latDeg * Math.PI / 180;
+  const cosLat = Math.cos(lat);
+  const z = Math.sin(lat) * r;
+  const pts = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * cosLat * r, Math.sin(a) * cosLat * r, z));
+  }
+  return pts;
+}
+
+function mag(v) { return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
