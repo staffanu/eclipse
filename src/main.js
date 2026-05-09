@@ -1,5 +1,5 @@
 import { installOverride, sigmaDeltaT, deltaT } from "./delta-t.js";
-import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore } from "./eclipse-search.js";
+import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore, nearestEclipseTo } from "./eclipse-search.js";
 import { computeShadowPath } from "./path.js";
 import { pathUncertaintyDeg } from "./uncertainty.js";
 import { MapView } from "./views/map-view.js";
@@ -9,11 +9,9 @@ import { LocalView } from "./views/local-view.js";
 installOverride();
 
 const els = {
-  searchFrom: document.getElementById("search-from"),
+  dateInput: document.getElementById("date-input"),
   prev: document.getElementById("prev-eclipse"),
   next: document.getElementById("next-eclipse"),
-  jumpYear: document.getElementById("jump-year"),
-  jumpGo: document.getElementById("jump-go"),
   obsLat: document.getElementById("obs-lat"),
   obsLon: document.getElementById("obs-lon"),
   info: document.getElementById("info"),
@@ -45,6 +43,7 @@ function showEclipse(eclipse) {
   const year = peakYear(eclipse);
   const samples = computeShadowPath(eclipse, { halfHours: 3, stepMinutes: 2 }).samples;
 
+  syncDateInput(eclipse);
   map.showEclipse(eclipse, samples, year);
   scene.showEclipse(eclipse);
   local.showEclipse(eclipse, state.observer.lat, state.observer.lon);
@@ -80,43 +79,38 @@ function peakYear(e) {
   return d.getUTCFullYear() + (d.getUTCMonth() + d.getUTCDate() / 31) / 12;
 }
 
-// Wire controls.
+// Set the date input to the eclipse's peak date. The native date input only
+// accepts AD years 0001-9999; outside that range we leave it blank (the full
+// date is still shown in the info panel).
+function syncDateInput(eclipse) {
+  const d = eclipse.peak.date;
+  const y = d.getUTCFullYear();
+  if (y >= 1 && y <= 9999) {
+    els.dateInput.value =
+      String(y).padStart(4, "0") + "-" +
+      String(d.getUTCMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getUTCDate()).padStart(2, "0");
+  } else {
+    els.dateInput.value = "";
+  }
+}
+
 els.next.addEventListener("click", () => {
-  const e = state.eclipse
-    ? nextEclipseAfter(state.eclipse)
-    : nextEclipseFrom(new Date(els.searchFrom.value));
-  showEclipse(e);
+  showEclipse(nextEclipseAfter(state.eclipse));
 });
 
 els.prev.addEventListener("click", () => {
-  const ref = state.eclipse ? state.eclipse.peak.date : new Date(els.searchFrom.value);
-  const e = prevEclipseBefore(ref);
+  const e = prevEclipseBefore(state.eclipse.peak.date);
   if (e) showEclipse(e);
 });
 
-els.jumpGo.addEventListener("click", () => {
-  const year = +els.jumpYear.value;
-  if (!Number.isFinite(year)) return;
-  const date = yearToDate(year);
-  state.eclipse = null;
-  showEclipse(nextEclipseFrom(date));
+els.dateInput.addEventListener("change", () => {
+  if (!els.dateInput.value) return;
+  showEclipse(nearestEclipseTo(new Date(els.dateInput.value)));
 });
-
-els.searchFrom.addEventListener("change", () => {
-  state.eclipse = null;
-  const e = nextEclipseFrom(new Date(els.searchFrom.value));
-  showEclipse(e);
-});
-
-function yearToDate(year) {
-  const y = Math.trunc(year);
-  const d = new Date(Date.UTC(2000, 0, 1));
-  d.setUTCFullYear(y);
-  return d;
-}
 
 els.obsLat.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 els.obsLon.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
 
 // Initial eclipse.
-showEclipse(nextEclipseFrom(new Date(els.searchFrom.value)));
+showEclipse(nearestEclipseTo(new Date(els.dateInput.value)));

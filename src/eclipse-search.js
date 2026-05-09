@@ -11,6 +11,23 @@ export function nextEclipseAfter(prev) {
   return A.NextGlobalSolarEclipse(prev.peak);
 }
 
+// Find the eclipse whose peak time is closest to the given date. Solar
+// eclipses are at most ~6 months apart, so it's enough to start one season
+// before the target and walk forward until we pass it.
+export function nearestEclipseTo(date) {
+  const target = A.MakeTime(date);
+  let e = A.SearchGlobalSolarEclipse(addDays(target, -200));
+  let best = e;
+  let bestDist = Math.abs(e.peak.tt - target.tt);
+  for (let i = 0; i < 5; i++) {
+    if (e.peak.tt - target.tt > 200) break;
+    e = A.NextGlobalSolarEclipse(e.peak);
+    const dist = Math.abs(e.peak.tt - target.tt);
+    if (dist < bestDist) { best = e; bestDist = dist; }
+  }
+  return best;
+}
+
 // Step backward by repeatedly searching forward in coarse 6-month windows
 // before the target date, then return the latest eclipse before it.
 export function prevEclipseBefore(date) {
