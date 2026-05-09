@@ -69,10 +69,20 @@
     </aside>
 
     <main>
+      <nav id="tab-nav">
+        <button class="tab" data-tab="map">Map</button>
+        <button class="tab" data-tab="bottom">Scene &amp; local</button>
+      </nav>
+
       <section id="map-panel" class="panel">
         <header id="map-header">Global path &mdash; umbral centerline with &Delta;T uncertainty band</header>
         <div id="map"></div>
       </section>
+
+      <div id="time-control">
+        <span id="time-display">peak</span>
+        <input type="range" id="time-slider" min="-120" max="120" value="0" step="1" />
+      </div>
 
       <section id="scene-panel" class="panel">
         <header>3D Sun &middot; Moon &middot; Earth (not to scale)</header>
@@ -81,10 +91,6 @@
 
       <section id="local-panel" class="panel">
         <header>Local view &mdash; Sun disk with Moon transit</header>
-        <div id="time-control">
-          <span id="time-display">peak</span>
-          <input type="range" id="time-slider" min="-120" max="120" value="0" step="1" />
-        </div>
         <div id="local"></div>
       </section>
     </main>

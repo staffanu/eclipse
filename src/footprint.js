@@ -12,14 +12,19 @@ const AU_KM = 149_597_870.7;
 const R_SUN = 695_700.0;
 const R_MOON = 1_737.4;
 
-const LAT_STEP = 3;
-const LON_STEP = 3;
+// Grid spacing. 2° gives ~16k samples per eclipse (~80 ms compute) and
+// catches narrow connections between regions of the penumbra that 3°
+// missed for some polar/wraparound eclipses.
+const LAT_STEP = 2;
+const LON_STEP = 2;
 
 // Stacked contours: each polygon set draws at a low opacity, so where higher
 // obscuration overlaps lower obscuration the colour deepens — produces a
-// soft heat-map look without any per-pixel tricks.
+// soft heat-map look without any per-pixel tricks. The lowest threshold is
+// effectively zero (1e-6) so the outer contour traces the actual penumbra
+// boundary, not a band a fraction of a percent inside it.
 export const FOOTPRINT_CONTOURS = [
-  { threshold: 0.001, fillOpacity: 0.10 },  // outer boundary of any coverage
+  { threshold: 1e-6,  fillOpacity: 0.10 },  // outer boundary of any coverage
   { threshold: 0.25,  fillOpacity: 0.10 },
   { threshold: 0.50,  fillOpacity: 0.12 },
   { threshold: 0.75,  fillOpacity: 0.14 },
