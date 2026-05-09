@@ -16,6 +16,9 @@ export class MapView {
 
     this.layer = L.layerGroup().addTo(this.map);
     this.observerMarker = null;
+    // Shadow-center marker is owned separately so it can be updated by the
+    // time slider without rebuilding the whole eclipse layer.
+    this.shadowMarker = null;
 
     if (onClick) {
       // Pass through the raw click latlng — the marker should land where the
@@ -40,6 +43,9 @@ export class MapView {
 
   showEclipse(eclipse, samples, year) {
     this.layer.clearLayers();
+    // Drop the shadow-center marker too — it'll be re-placed by the next
+    // setShadowCenter call.
+    if (this.shadowMarker) { this.shadowMarker.remove(); this.shadowMarker = null; }
 
     // Uncertainty band.
     const band1 = uncertaintyBand(samples, year, 1);
@@ -84,6 +90,25 @@ export class MapView {
         )
         .addTo(this.layer);
       this.map.flyTo([eclipse.latitude, eclipse.longitude], 3, { duration: 0.6 });
+    }
+  }
+
+  // Move (or remove) the shadow-center marker driven by the time slider.
+  // Pass lat/lon = null to hide it (e.g. when the axis misses Earth at the
+  // chosen instant).
+  setShadowCenter(lat, lon, kind) {
+    if (lat == null || lon == null) {
+      if (this.shadowMarker) { this.shadowMarker.remove(); this.shadowMarker = null; }
+      return;
+    }
+    const fill = kind === "annular" ? "#ffd75c" : "#ff5c5c";
+    if (!this.shadowMarker) {
+      this.shadowMarker = L.circleMarker([lat, lon], {
+        radius: 8, color: "#fff", weight: 2, fillColor: fill, fillOpacity: 0.9,
+      }).addTo(this.map);
+    } else {
+      this.shadowMarker.setLatLng([lat, lon]);
+      this.shadowMarker.setStyle({ fillColor: fill });
     }
   }
 }

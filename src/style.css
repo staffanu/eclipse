@@ -77,6 +77,14 @@ input, button {
   width: 100%;
 }
 
+input[type="range"] {
+  padding: 0;
+  background: transparent;
+  border: none;
+  accent-color: var(--accent);
+  height: 24px;
+}
+
 button {
   cursor: pointer;
   background: #21262d;
