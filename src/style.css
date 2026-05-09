@@ -163,19 +163,27 @@ footer a { color: var(--accent); }
 
 main {
   display: grid;
-  grid-template-rows: 1.4fr 1fr 1fr;
+  grid-template-rows: 1.2fr 1fr;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "map map"
+    "scene local";
   gap: 0;
   height: 100vh;
   overflow: hidden;
 }
 
+#map-panel   { grid-area: map; }
+#scene-panel { grid-area: scene; }
+#local-panel { grid-area: local; }
+
 .panel {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--border);
   min-height: 0;
 }
-.panel:last-child { border-bottom: none; }
+#map-panel    { border-bottom: 1px solid var(--border); }
+#scene-panel  { border-right: 1px solid var(--border); }
 
 .panel > header {
   padding: 6px 12px;
@@ -231,10 +239,16 @@ main {
   #sidebar footer { display: none; }
 
   main {
+    grid-template-columns: 1fr;
     grid-template-rows: 1.6fr 1fr 1fr;
+    grid-template-areas:
+      "map"
+      "scene"
+      "local";
     height: auto;
     min-height: 55dvh;
   }
+  #scene-panel { border-right: none; border-bottom: 1px solid var(--border); }
 
   .panel > header {
     font-size: 10px;

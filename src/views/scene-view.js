@@ -101,10 +101,33 @@ export class SceneView {
     this.sun.scale.set(SUN_RADIUS_W * 2.4, SUN_RADIUS_W * 2.4, 1);
     this.scene.add(this.sun);
 
-    this.earth = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_RADIUS_W, 48, 48),
-      new THREE.MeshPhongMaterial({ color: 0x1a4878, emissive: 0x031020, shininess: 8 }),
-    );
+    // Three.js SphereGeometry has its UV pole at +Y and its texture U=0
+    // seam at −X. We render in a J2000-ish frame where +Z is the celestial
+    // pole, and our lat/lon → Cartesian convention puts lon=0 at +X. A
+    // single rotateX(π/2) maps the geometry's +Y pole to +Z; the U=0/1
+    // seam stays at −X (the antimeridian, lon=±180) and U=0.5 lands at +X
+    // (the prime meridian) — exactly where the disc and wireframe expect.
+    const earthGeo = new THREE.SphereGeometry(EARTH_RADIUS_W, 64, 48);
+    earthGeo.rotateX(Math.PI / 2);
+
+    const earthMat = new THREE.MeshPhongMaterial({
+      color: 0x1a4878, emissive: 0x031020, shininess: 8,
+    });
+    this.earth = new THREE.Mesh(earthGeo, earthMat);
+
+    // Try to load a public Earth texture so continents are visible — that's
+    // the only way the user can perceive Earth rotating in the scene. If
+    // CORS or a network error prevents loading, the solid blue fallback
+    // remains in place.
+    new THREE.TextureLoader()
+      .setCrossOrigin("anonymous")
+      .load(
+        "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg",
+        (tex) => { tex.colorSpace = THREE.SRGBColorSpace; earthMat.map = tex; earthMat.needsUpdate = true; },
+        undefined,
+        () => { /* keep solid blue fallback */ },
+      );
+
     this.scene.add(this.earth);
 
     this.moon = new THREE.Mesh(
@@ -302,12 +325,31 @@ export class SceneView {
     const pointers = new Map();
     let lastPinchDist = null;
 
+    // Z-up orbit: decompose the camera offset from origin into yaw (around
+    // the world's +Z axis, the celestial pole) and pitch (signed elevation
+    // angle from the equatorial plane). Three.js's Spherical helper uses
+    // +Y as the polar axis, which doesn't agree with our camera.up = +Z
+    // and leads to the camera rolling unexpectedly during drag.
     const orbitFromDelta = (dx, dy) => {
-      // Orbit the camera around the centre of the scene (origin = Earth).
-      const spherical = new THREE.Spherical().setFromVector3(this.camera.position);
-      spherical.theta -= dx * 0.005;
-      spherical.phi = Math.min(Math.PI - 0.1, Math.max(0.1, spherical.phi - dy * 0.005));
-      this.camera.position.setFromSpherical(spherical);
+      const off = this.camera.position.clone();
+      const radius = off.length();
+      if (radius < 1e-6) return;
+
+      const horizDist = Math.hypot(off.x, off.y);
+      let yaw = Math.atan2(off.y, off.x);
+      let pitch = Math.atan2(off.z, horizDist);
+
+      yaw -= dx * 0.005;
+      pitch -= dy * 0.005;
+      const PITCH_LIMIT = Math.PI / 2 - 0.05;
+      pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
+
+      const newH = Math.cos(pitch) * radius;
+      this.camera.position.set(
+        Math.cos(yaw) * newH,
+        Math.sin(yaw) * newH,
+        Math.sin(pitch) * radius,
+      );
       this.camera.lookAt(0, 0, 0);
     };
     const zoomBy = (factor) => {
