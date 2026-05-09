@@ -226,6 +226,20 @@ document.querySelectorAll("#tab-nav .tab").forEach(b => {
 });
 setActiveTab("map");
 
+// Mobile sidebar toggles. Hide / show the whole sidebar (giving the panels
+// the full screen) and expand / collapse the "more options" group.
+document.getElementById("sidebar-hide")?.addEventListener("click", () => {
+  document.body.classList.add("sidebar-hidden");
+  window.dispatchEvent(new Event("resize"));
+});
+document.getElementById("sidebar-show")?.addEventListener("click", () => {
+  document.body.classList.remove("sidebar-hidden");
+  window.dispatchEvent(new Event("resize"));
+});
+document.getElementById("more-toggle")?.addEventListener("click", () => {
+  document.body.classList.toggle("more-expanded");
+});
+
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
 safe(() => showEclipse(nearestEclipseTo(new Date(els.dateInput.value))))();
 
