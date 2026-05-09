@@ -105,29 +105,17 @@ export class MapView {
       if (this.shadowMarker) { this.shadowMarker.remove(); this.shadowMarker = null; }
       return;
     }
-    const onPath = kind === "total" || kind === "annular";
-    const style = onPath
-      ? {
-          radius: 8, color: "#fff", weight: 2,
-          fillColor: kind === "annular" ? "#ffd75c" : "#ff5c5c",
-          fillOpacity: 0.9, opacity: 1,
-        }
-      : {
-          // Axis misses Earth — show the projection of the axis onto the
-          // surface as a hollow muted marker so it's clearly distinguished
-          // from points actually on the totality path.
-          radius: 6, color: "#888", weight: 2,
-          fillColor: "#444", fillOpacity: 0.4, opacity: 0.7,
-          dashArray: "3 2",
-        };
+    const fill = kind === "annular" ? "#ffd75c" : "#ff5c5c";
     if (!this.shadowMarker) {
-      this.shadowMarker = L.circleMarker([lat, lon], style).addTo(this.map);
+      this.shadowMarker = L.circleMarker([lat, lon], {
+        radius: 8, color: "#fff", weight: 2, fillColor: fill, fillOpacity: 0.9,
+      }).addTo(this.map);
       this.shadowMarker.bindTooltip(label || "", {
         permanent: true, direction: "top", offset: [0, -8], className: "shadow-time-tip",
       });
     } else {
       this.shadowMarker.setLatLng([lat, lon]);
-      this.shadowMarker.setStyle(style);
+      this.shadowMarker.setStyle({ fillColor: fill });
       if (label != null) this.shadowMarker.setTooltipContent(label);
     }
   }
