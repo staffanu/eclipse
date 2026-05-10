@@ -23,15 +23,16 @@ const R_MOON_KM = 1_737.4;
 // it at world distance ~5 keeps everything navigable.
 const DIST_SCALE = 1 / 80_000;
 
-// Body radii — exaggerated so the bodies are visible at the chosen distance
-// scale, but Earth's exaggeration is kept modest (≈ 2.5× actual at this
-// DIST_SCALE) so the umbral apex — which sits ~30 000 km in front of Earth
-// for an annular eclipse — actually pokes outside Earth's visualised body
-// instead of being buried inside it. The shadow cones share the Moon's
-// transverse exaggeration so they line up with Moon's silhouette at the base.
+// Body radii. Earth and Moon are kept close to actual scale at this
+// DIST_SCALE so the cone-Earth visual relationship matches the real
+// geometry: the axis perpendicular distance from Earth's centre crosses
+// R_earth at exactly the eclipse start / end, and the apex marker
+// (visible above) sits clearly outside Earth's body. The Sun stays
+// strongly exaggerated since it's also distance-capped — we'd see
+// nothing of it otherwise.
 const SUN_RADIUS_W = 1.2;
-const EARTH_RADIUS_W = 0.20;
-const MOON_RADIUS_W = 0.12;
+const EARTH_RADIUS_W = 0.10;       // ~1.25× actual at this DIST_SCALE
+const MOON_RADIUS_W = 0.06;        // ~2.8× actual; keeps the cone base visible
 
 // Sun is capped at this world distance — the actual scaled distance (~1850)
 // would push it absurdly far off-screen.
