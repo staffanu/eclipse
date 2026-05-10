@@ -119,12 +119,21 @@ export class SceneView {
     // the only way the user can perceive Earth rotating in the scene. We
     // use a jsDelivr URL because that CDN sets `Access-Control-Allow-Origin: *`
     // for all assets, which `crossOrigin="anonymous"` requires (the original
-    // threejs.org-hosted texture failed CORS in some browsers).
+    // threejs.org-hosted texture failed CORS in some browsers). When the
+    // texture lands we also brighten the material's base colour to white so
+    // the texture is shown at full brightness instead of being multiplied by
+    // a dark blue.
     new THREE.TextureLoader()
       .setCrossOrigin("anonymous")
       .load(
         "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/earth_atmos_2048.jpg",
-        (tex) => { tex.colorSpace = THREE.SRGBColorSpace; earthMat.map = tex; earthMat.needsUpdate = true; },
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          earthMat.map = tex;
+          earthMat.color.setHex(0xffffff);
+          earthMat.emissive.setHex(0x101820);
+          earthMat.needsUpdate = true;
+        },
         undefined,
         (err) => { console.warn("Earth texture failed to load:", err); },
       );
@@ -186,14 +195,27 @@ export class SceneView {
     })));
   }
 
-  // Two cones extend from the Moon along the shadow axis: the umbra (dark
-  // red) narrows to its apex; the penumbra (pale yellow) flares outward.
-  // Both share the same axis and base position so they line up at the Moon.
+  // Three cones extend along the shadow axis. The umbra (dark red) goes
+  // from the Moon to the umbral apex, where Sun and Moon's apparent radii
+  // are equal — past the apex the Moon is geometrically "smaller" than the
+  // Sun, so an observer there sees an annular eclipse. The antumbra (same
+  // red, paler) extends past the apex and is what hits Earth for annular
+  // eclipses; for total eclipses it's still drawn but the apex falls
+  // beyond Earth so the antumbra section is in space behind the planet.
+  // The penumbra (pale yellow) is the much wider partial-shadow cone.
   _addShadowCones() {
+    const umbraColor = 0x8a3030;
     this.umbra = new THREE.Mesh(
       new THREE.BufferGeometry(),
       new THREE.MeshBasicMaterial({
-        color: 0x8a3030, transparent: true, opacity: 0.30, side: THREE.DoubleSide,
+        color: umbraColor, transparent: true, opacity: 0.32, side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    this.antumbra = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({
+        color: umbraColor, transparent: true, opacity: 0.18, side: THREE.DoubleSide,
         depthWrite: false,
       }),
     );
@@ -204,8 +226,9 @@ export class SceneView {
         depthWrite: false,
       }),
     );
-    // Penumbra first so umbra paints over it where they overlap.
+    // Penumbra first so umbra/antumbra paint over it where they overlap.
     this.scene.add(this.penumbra);
+    this.scene.add(this.antumbra);
     this.scene.add(this.umbra);
   }
 
@@ -230,10 +253,21 @@ export class SceneView {
 
     this.umbra.geometry.dispose();
     this.umbra.geometry = new THREE.ConeGeometry(MOON_RADIUS_W, L_w, 64, 1, true);
+    // Antumbra: divergent cone past the apex. Apex at one end (radius 0),
+    // wide end at the other; we extend it past Earth so it's visibly
+    // hitting the planet for annular eclipses (apex sits in space between
+    // Moon and Earth) and still passes through behind Earth for total ones.
+    const antuLen_w = L_w * 1.2;
+    const antuTopRadius = MOON_RADIUS_W * (antuLen_w / L_w);
+    this.antumbra.geometry.dispose();
+    this.antumbra.geometry = new THREE.CylinderGeometry(
+      antuTopRadius, 0, antuLen_w, 64, 1, true,
+    );
     this.penumbra.geometry.dispose();
     this.penumbra.geometry = new THREE.CylinderGeometry(
       penTopRadius_w, MOON_RADIUS_W, penLen_w, 64, 1, true,
     );
+    this._L_w = L_w;   // cached so updateForTime can place the antumbra apex
 
     this.updateForTime(eclipse.peak.date);
     this._fitCamera();
@@ -264,6 +298,11 @@ export class SceneView {
     const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPos).normalize();
     placeAlongAxis(this.umbra, moonPos, shadowDir);
     placeAlongAxis(this.penumbra, moonPos, shadowDir);
+    // Antumbra base sits at the umbral apex, point pointing back toward
+    // the Moon; the wide end then extends past Earth in the shadow
+    // direction.
+    const apexPos = moonPos.clone().addScaledVector(shadowDir, this._L_w);
+    placeAlongAxis(this.antumbra, apexPos, shadowDir);
 
     // Earth's rotation around +Z is set from Greenwich Apparent Sidereal
     // Time at this instant.
