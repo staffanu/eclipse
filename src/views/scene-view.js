@@ -24,19 +24,24 @@ const R_MOON_KM = 1_737.4;
 // it at world distance ~5 keeps everything navigable.
 const DIST_SCALE = 1 / 80_000;
 
-// Body radii. Earth and Moon are at exactly their actual scaled radii so
-// every linear dimension in the cone geometry (cone base = Moon's actual
-// radius, length = actual L = |M-S|·R_moon/(R_sun-R_moon)) matches reality;
-// the Sun's *radius* is set to whatever makes its *angular size* from
-// origin match the real Sun (~0.265° angular radius). The Sun's *distance*
-// is the only deliberate deviation — at this DIST_SCALE the actual Sun
-// would be ~1875 world units away, so it's capped at SUN_DISPLAY_DIST and
-// the radius is scaled to compensate so the eclipse's Sun-Moon angular
-// match still reads correctly.
-const SUN_DISPLAY_DIST = 60;
-const EARTH_RADIUS_W   = 6_378.137 * DIST_SCALE;                              // actual
-const MOON_RADIUS_W    = R_MOON_KM * DIST_SCALE;                              // actual
-const SUN_RADIUS_W     = SUN_DISPLAY_DIST * R_SUN_KM / AU_KM;                 // matches actual angular size
+// Body radii. Earth and Moon are at exactly their actual scaled radii (so
+// the cone's longitudinal scale and the cone-Earth visual interaction are
+// physically correct in their long-axis dimensions). The cones, however,
+// are *transversely* fattened by CONE_FATNESS — at actual-scale half-angle
+// (~0.27°) the umbra cone narrows to ~50 km wide where it crosses Earth's
+// surface, which is sub-pixel at any reasonable camera distance, so the
+// cone visibly disappears thousands of km before it actually clears Earth.
+// 3× exaggeration gives the cones enough thickness near Earth to read as
+// "passing through" while keeping the longitudinal geometry honest. The
+// Sun is the other deliberate deviation: at this DIST_SCALE the real Sun
+// sits ~1875 world units away, so it's capped at SUN_DISPLAY_DIST and its
+// radius is set so its angular size still matches the real Sun's.
+const SUN_DISPLAY_DIST  = 60;
+const EARTH_RADIUS_W    = 6_378.137 * DIST_SCALE;
+const MOON_RADIUS_W     = R_MOON_KM * DIST_SCALE;
+const CONE_FATNESS      = 3;                                     // visibility-only transverse fudge
+const CONE_BASE_W       = MOON_RADIUS_W * CONE_FATNESS;
+const SUN_RADIUS_W      = SUN_DISPLAY_DIST * R_SUN_KM / AU_KM;
 
 export class SceneView {
   constructor(container) {
@@ -247,14 +252,14 @@ export class SceneView {
     const cone_extent_w = moonDist_w + EARTH_RADIUS_W * 2;
 
     this.umbra.geometry.dispose();
-    this.umbra.geometry = new THREE.ConeGeometry(MOON_RADIUS_W, L_w, 64, 1, true);
+    this.umbra.geometry = new THREE.ConeGeometry(CONE_BASE_W, L_w, 64, 1, true);
     // Antumbra: divergent cone past the umbra apex; for annular eclipses
     // it's what hits Earth (the umbra apex falls short of the planet).
     // Length runs from apex (radius 0) to a small margin past Earth's far
     // side; transverse radius grows at the same rate the umbra was
     // shrinking, so apex-to-Earth proportions stay correct.
     const antuLen_w = Math.max(0.05, cone_extent_w - L_w);
-    const antuTopRadius = MOON_RADIUS_W * (antuLen_w / L_w);
+    const antuTopRadius = CONE_BASE_W * (antuLen_w / L_w);
     this.antumbra.geometry.dispose();
     this.antumbra.geometry = new THREE.CylinderGeometry(
       antuTopRadius, 0, antuLen_w, 64, 1, true,
@@ -262,10 +267,10 @@ export class SceneView {
     // Penumbra: divergent cone that grows from R_moon at the Moon outward.
     // Same end length as the antumbra (just past Earth).
     const penLen_w = cone_extent_w;
-    const penTopRadius_w = MOON_RADIUS_W * (1 + penLen_w / L_w);
+    const penTopRadius_w = CONE_BASE_W * (1 + penLen_w / L_w);
     this.penumbra.geometry.dispose();
     this.penumbra.geometry = new THREE.CylinderGeometry(
-      penTopRadius_w, MOON_RADIUS_W, penLen_w, 64, 1, true,
+      penTopRadius_w, CONE_BASE_W, penLen_w, 64, 1, true,
     );
     this._L_w = L_w;   // cached so updateForTime can place the antumbra apex
 
