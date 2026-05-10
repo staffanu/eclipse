@@ -81,11 +81,11 @@ function sampleAt(t) {
   const cQ = (M.x*M.x + M.y*M.y) / a2 + M.z*M.z / c2 - 1;
   const disc = bQ*bQ - 4*aQ*cQ;
   if (disc < 0) {
-    return { time: t, lat: null, lon: null, kind: "none", axisDistKm: NaN };
+    return { time: t, lat: null, lon: null, kind: "none", widthKm: 0 };
   }
   const sqrtDisc = Math.sqrt(disc);
   const s = (-bQ - sqrtDisc) / (2 * aQ);
-  if (s <= 0) return { time: t, lat: null, lon: null, kind: "none", axisDistKm: NaN };
+  if (s <= 0) return { time: t, lat: null, lon: null, kind: "none", widthKm: 0 };
 
   const Pkm_eqd = add(M, scale(D, s));
 
@@ -99,7 +99,14 @@ function sampleAt(t) {
   const L = SMlen * R_MOON / (R_SUN - R_MOON);
   const kind = s < L ? "total" : "annular";
 
-  return { time: t, lat: obs.latitude, lon: obs.longitude, kind, axisDistKm: 0 };
+  // Half-width of the umbra (or antumbra) cross-section where the cone
+  // intersects the surface. The cone is parameterised so its radius is
+  // R_MOON at the Moon and 0 at the apex (s = L); past the apex the
+  // antumbra grows linearly. This is the perpendicular-to-path half-width
+  // of the totality / annularity strip on the ground.
+  const widthKm = R_MOON * Math.abs(1 - s / L);
+
+  return { time: t, lat: obs.latitude, lon: obs.longitude, kind, widthKm };
 }
 
 function utToDate(ut) {

@@ -1,5 +1,5 @@
 import { installOverride, sigmaDeltaT, deltaT } from "./delta-t.js";
-import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore, nearestEclipseTo } from "./eclipse-search.js";
+import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore } from "./eclipse-search.js";
 import { computeShadowPath, shadowSampleAtTime } from "./path.js";
 import { computeFootprintLayers } from "./footprint.js";
 import { pathUncertaintyDeg, normalizeLon } from "./uncertainty.js";
@@ -106,8 +106,8 @@ function showEclipse(eclipse) {
   els.mapHeader.textContent = isPartial
     ? "Partial eclipse — yellow region shows where any partial coverage is visible at peak"
     : eclipse.kind === "annular"
-      ? "Global path — antumbral centerline with ΔT uncertainty band"
-      : "Global path — umbral centerline with ΔT uncertainty band";
+      ? "Global path — antumbral footprint with ΔT uncertainty band"
+      : "Global path — umbral footprint with ΔT uncertainty band";
 
   const sigma = sigmaDeltaT(year);
   const dt = deltaT(year);
@@ -169,7 +169,7 @@ els.prev.addEventListener("click", safe(() => {
 
 els.dateInput.addEventListener("change", safe(() => {
   if (!els.dateInput.value) return;
-  showEclipse(nearestEclipseTo(new Date(els.dateInput.value)));
+  showEclipse(nextEclipseFrom(new Date(els.dateInput.value)));
 }));
 
 els.obsLat.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
@@ -241,7 +241,7 @@ document.getElementById("more-toggle")?.addEventListener("click", () => {
 });
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
-safe(() => showEclipse(nearestEclipseTo(new Date(els.dateInput.value))))();
+safe(() => showEclipse(nextEclipseFrom(new Date(els.dateInput.value))))();
 
 // If the browser will hand us the user's coordinates (cached or freshly
 // granted), use them as the default observer. Otherwise we keep the HTML
