@@ -23,16 +23,16 @@ const R_MOON_KM = 1_737.4;
 // it at world distance ~5 keeps everything navigable.
 const DIST_SCALE = 1 / 80_000;
 
-// Body radii. Earth and Moon are kept close to actual scale at this
-// DIST_SCALE so the cone-Earth visual relationship matches the real
-// geometry: the axis perpendicular distance from Earth's centre crosses
-// R_earth at exactly the eclipse start / end, and the apex marker
-// (visible above) sits clearly outside Earth's body. The Sun stays
-// strongly exaggerated since it's also distance-capped — we'd see
-// nothing of it otherwise.
-const SUN_RADIUS_W = 1.2;
-const EARTH_RADIUS_W = 0.10;       // ~1.25× actual at this DIST_SCALE
-const MOON_RADIUS_W = 0.06;        // ~2.8× actual; keeps the cone base visible
+// Body radii. Earth is rendered at *exactly* its actual radius in scaled
+// units, so the visual cone-Earth transition (the cone passing through the
+// rendered Earth's silhouette) happens at the same instant as the real
+// eclipse start / end (when the shadow axis is tangent to Earth's actual
+// surface). Moon is modestly exaggerated so its silhouette and the cone
+// base aren't sub-pixel; the Sun keeps its strong exaggeration since it's
+// also distance-capped.
+const SUN_RADIUS_W   = 1.2;
+const EARTH_RADIUS_W = 6_378.137 * DIST_SCALE;   // ~0.0797
+const MOON_RADIUS_W  = 0.04;                     // ~1.8× actual at this scale
 
 // Sun is capped at this world distance — the actual scaled distance (~1850)
 // would push it absurdly far off-screen.
@@ -161,8 +161,9 @@ export class SceneView {
     // inherits the planet's sidereal rotation; as you scrub the slider
     // the sphere walks along the surface while Earth turns under it —
     // the visible "shadow sweeps from one side to the other" effect.
+    // Sized small relative to Earth so it doesn't look like a tumour.
     this.shadowDisc = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 24, 16),
+      new THREE.SphereGeometry(EARTH_RADIUS_W * 0.10, 24, 16),
       new THREE.MeshBasicMaterial({ color: 0x000000 }),
     );
     this.shadowDisc.visible = false;
@@ -240,9 +241,10 @@ export class SceneView {
     // is unambiguously the cone tip moving in inertial space (rather than
     // surface features rotating past it, which is how the Moon's slow
     // orbital drift can otherwise be mistaken for "the cone follows
-    // Earth's rotation").
+    // Earth's rotation"). Sized small relative to Earth so it reads as a
+    // dot, not a blob.
     this.apexMarker = new THREE.Mesh(
-      new THREE.SphereGeometry(0.022, 16, 16),
+      new THREE.SphereGeometry(EARTH_RADIUS_W * 0.10, 16, 16),
       new THREE.MeshBasicMaterial({ color: 0xff5050, depthTest: false }),
     );
     this.apexMarker.renderOrder = 999;
