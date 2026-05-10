@@ -24,23 +24,19 @@ const R_MOON_KM = 1_737.4;
 // it at world distance ~5 keeps everything navigable.
 const DIST_SCALE = 1 / 80_000;
 
-// Body radii. Earth and Moon are at exactly their actual scaled radii (so
-// the cone's longitudinal scale and the cone-Earth visual interaction are
-// physically correct in their long-axis dimensions). The cones, however,
-// are *transversely* fattened by CONE_FATNESS — at actual-scale half-angle
-// (~0.27°) the umbra cone narrows to ~50 km wide where it crosses Earth's
-// surface, which is sub-pixel at any reasonable camera distance, so the
-// cone visibly disappears thousands of km before it actually clears Earth.
-// 3× exaggeration gives the cones enough thickness near Earth to read as
-// "passing through" while keeping the longitudinal geometry honest. The
-// Sun is the other deliberate deviation: at this DIST_SCALE the real Sun
+// Body radii. Earth, Moon, and the cones are all at exactly their actual
+// scaled radii so the cone-Earth visual interaction is physically correct.
+// The Sun is the one deliberate deviation: at this DIST_SCALE the real Sun
 // sits ~1875 world units away, so it's capped at SUN_DISPLAY_DIST and its
-// radius is set so its angular size still matches the real Sun's.
+// radius is set so its angular size still matches the real Sun's. The
+// shadow-axis direction is computed from the *actual* Sun position, not
+// from this capped display position — otherwise as the Moon moves, the
+// axis would swing far faster than reality and the cone would sweep off
+// Earth long before the real eclipse ends.
 const SUN_DISPLAY_DIST  = 60;
 const EARTH_RADIUS_W    = 6_378.137 * DIST_SCALE;
 const MOON_RADIUS_W     = R_MOON_KM * DIST_SCALE;
-const CONE_FATNESS      = 3;                                     // visibility-only transverse fudge
-const CONE_BASE_W       = MOON_RADIUS_W * CONE_FATNESS;
+const CONE_BASE_W       = MOON_RADIUS_W;
 const SUN_RADIUS_W      = SUN_DISPLAY_DIST * R_SUN_KM / AU_KM;
 
 export class SceneView {
@@ -292,15 +288,19 @@ export class SceneView {
     const moonV = A.GeoMoon(t);
 
     const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
-    const sunDir  = new THREE.Vector3(sunV.x,  sunV.y,  sunV.z).normalize();
+    const sunPosActual = new THREE.Vector3(sunV.x, sunV.y, sunV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    const sunDir  = sunPosActual.clone().normalize();
     const sunPos  = sunDir.clone().multiplyScalar(SUN_DISPLAY_DIST);
 
     this.sun.position.copy(sunPos);
     this.moon.position.copy(moonPos);
     this.sunLight.position.copy(sunPos);
 
-    // Shadow axis: from Sun toward Moon, then beyond.
-    const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPos).normalize();
+    // Shadow axis: from the *actual* Sun position toward the Moon. Using
+    // the capped display position here would make the axis swing too fast
+    // as the Moon moves (the lever arm would be ~30× too short), and the
+    // cone would clear Earth far earlier than the real eclipse end time.
+    const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPosActual).normalize();
     placeAlongAxis(this.umbra, moonPos, shadowDir);
     placeAlongAxis(this.penumbra, moonPos, shadowDir);
     // Antumbra base sits at the umbral apex, point pointing back toward
