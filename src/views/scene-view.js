@@ -13,7 +13,6 @@
 
 import * as THREE from "three";
 import * as A from "astronomy-engine";
-import { shadowSampleAtTime } from "../path.js";
 
 const AU_KM = 149_597_870.7;
 const R_SUN_KM = 695_700.0;
@@ -153,21 +152,6 @@ export class SceneView {
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
     this.sunLight.target = this.earth;
     this.scene.add(this.sunLight);
-
-    // Umbral shadow patch on Earth's surface — a small dark sphere half
-    // embedded in the surface at the centerline lat/lon. (A flat disc was
-    // invisible edge-on, which happens almost any time the camera sits to
-    // the side of the Sun-Moon-Earth axis.) Parented to Earth so it
-    // inherits the planet's sidereal rotation; as you scrub the slider
-    // the sphere walks along the surface while Earth turns under it —
-    // the visible "shadow sweeps from one side to the other" effect.
-    // Sized small relative to Earth so it doesn't look like a tumour.
-    this.shadowDisc = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_RADIUS_W * 0.10, 24, 16),
-      new THREE.MeshBasicMaterial({ color: 0x000000 }),
-    );
-    this.shadowDisc.visible = false;
-    this.earth.add(this.shadowDisc);
   }
 
   // Wireframe meridians, parallels and a polar axis on Earth — gives the
@@ -235,20 +219,6 @@ export class SceneView {
     this.scene.add(this.penumbra);
     this.scene.add(this.antumbra);
     this.scene.add(this.umbra);
-
-    // Always-visible marker at the umbral apex. depthTest:false + a high
-    // renderOrder makes it draw on top of everything else, so its motion
-    // is unambiguously the cone tip moving in inertial space (rather than
-    // surface features rotating past it, which is how the Moon's slow
-    // orbital drift can otherwise be mistaken for "the cone follows
-    // Earth's rotation"). Sized small relative to Earth so it reads as a
-    // dot, not a blob.
-    this.apexMarker = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_RADIUS_W * 0.10, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xff5050, depthTest: false }),
-    );
-    this.apexMarker.renderOrder = 999;
-    this.scene.add(this.apexMarker);
   }
 
   showEclipse(eclipse) {
@@ -267,21 +237,31 @@ export class SceneView {
     });
     const L_km = sunMoonKm * R_MOON_KM / (R_SUN_KM - R_MOON_KM);
     const L_w  = L_km * DIST_SCALE;
-    const penLen_w = L_w * 1.4;
-    const penTopRadius_w = MOON_RADIUS_W * (1 + penLen_w / L_w);
+
+    // Cut both penumbra and antumbra so they only extend a couple of Earth
+    // radii past Earth's far surface, instead of doubling the umbra length.
+    // Past that point the cones don't tell us anything new and just look
+    // like long needles dangling into empty space.
+    const moonDist_w = mag({ x: moonV.x, y: moonV.y, z: moonV.z }) * AU_KM * DIST_SCALE;
+    const cone_extent_w = moonDist_w + EARTH_RADIUS_W * 2;
 
     this.umbra.geometry.dispose();
     this.umbra.geometry = new THREE.ConeGeometry(MOON_RADIUS_W, L_w, 64, 1, true);
-    // Antumbra: divergent cone past the apex. Apex at one end (radius 0),
-    // wide end at the other; we extend it past Earth so it's visibly
-    // hitting the planet for annular eclipses (apex sits in space between
-    // Moon and Earth) and still passes through behind Earth for total ones.
-    const antuLen_w = L_w * 1.2;
+    // Antumbra: divergent cone past the umbra apex; for annular eclipses
+    // it's what hits Earth (the umbra apex falls short of the planet).
+    // Length runs from apex (radius 0) to a small margin past Earth's far
+    // side; transverse radius grows at the same rate the umbra was
+    // shrinking, so apex-to-Earth proportions stay correct.
+    const antuLen_w = Math.max(0.05, cone_extent_w - L_w);
     const antuTopRadius = MOON_RADIUS_W * (antuLen_w / L_w);
     this.antumbra.geometry.dispose();
     this.antumbra.geometry = new THREE.CylinderGeometry(
       antuTopRadius, 0, antuLen_w, 64, 1, true,
     );
+    // Penumbra: divergent cone that grows from R_moon at the Moon outward.
+    // Same end length as the antumbra (just past Earth).
+    const penLen_w = cone_extent_w;
+    const penTopRadius_w = MOON_RADIUS_W * (1 + penLen_w / L_w);
     this.penumbra.geometry.dispose();
     this.penumbra.geometry = new THREE.CylinderGeometry(
       penTopRadius_w, MOON_RADIUS_W, penLen_w, 64, 1, true,
@@ -322,30 +302,11 @@ export class SceneView {
     // direction.
     const apexPos = moonPos.clone().addScaledVector(shadowDir, this._L_w);
     placeAlongAxis(this.antumbra, apexPos, shadowDir);
-    this.apexMarker.position.copy(apexPos);
 
     // Earth's rotation around +Z is set from Greenwich Apparent Sidereal
     // Time at this instant.
     const sidereal = A.SiderealTime(t);
     this.earth.rotation.z = sidereal * Math.PI / 12;
-
-    // Shadow patch at the umbra's surface point. shadowSampleAtTime returns
-    // Earth-fixed lat/lon; the disc is parented to the (rotating) Earth so
-    // setting its local position from those coords places it at the
-    // correct world location once Earth's rotation is applied.
-    const sample = shadowSampleAtTime(t);
-    if (sample.lat == null) {
-      this.shadowDisc.visible = false;
-    } else {
-      this.shadowDisc.visible = true;
-      const latR = sample.lat * Math.PI / 180;
-      const lonR = sample.lon * Math.PI / 180;
-      this.shadowDisc.position.set(
-        Math.cos(latR) * Math.cos(lonR) * EARTH_RADIUS_W,
-        Math.cos(latR) * Math.sin(lonR) * EARTH_RADIUS_W,
-        Math.sin(latR) * EARTH_RADIUS_W,
-      );
-    }
   }
 
   _fitCamera() {
@@ -398,7 +359,7 @@ export class SceneView {
       let pitch = Math.atan2(off.z, horizDist);
 
       yaw -= dx * 0.005;
-      pitch -= dy * 0.005;
+      pitch += dy * 0.005;   // drag down → look down (inverted vs. previous)
       const PITCH_LIMIT = Math.PI / 2 - 0.05;
       pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
 
