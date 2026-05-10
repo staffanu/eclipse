@@ -24,11 +24,14 @@ const R_MOON_KM = 1_737.4;
 const DIST_SCALE = 1 / 80_000;
 
 // Body radii — exaggerated so the bodies are visible at the chosen distance
-// scale. The shadow cones share the Moon's exaggeration on the transverse
-// axis so they line up with Moon's silhouette at the base.
+// scale, but Earth's exaggeration is kept modest (≈ 2.5× actual at this
+// DIST_SCALE) so the umbral apex — which sits ~30 000 km in front of Earth
+// for an annular eclipse — actually pokes outside Earth's visualised body
+// instead of being buried inside it. The shadow cones share the Moon's
+// transverse exaggeration so they line up with Moon's silhouette at the base.
 const SUN_RADIUS_W = 1.2;
-const EARTH_RADIUS_W = 0.32;
-const MOON_RADIUS_W = 0.18;
+const EARTH_RADIUS_W = 0.20;
+const MOON_RADIUS_W = 0.12;
 
 // Sun is capped at this world distance — the actual scaled distance (~1850)
 // would push it absurdly far off-screen.
@@ -230,6 +233,19 @@ export class SceneView {
     this.scene.add(this.penumbra);
     this.scene.add(this.antumbra);
     this.scene.add(this.umbra);
+
+    // Always-visible marker at the umbral apex. depthTest:false + a high
+    // renderOrder makes it draw on top of everything else, so its motion
+    // is unambiguously the cone tip moving in inertial space (rather than
+    // surface features rotating past it, which is how the Moon's slow
+    // orbital drift can otherwise be mistaken for "the cone follows
+    // Earth's rotation").
+    this.apexMarker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.022, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xff5050, depthTest: false }),
+    );
+    this.apexMarker.renderOrder = 999;
+    this.scene.add(this.apexMarker);
   }
 
   showEclipse(eclipse) {
@@ -303,6 +319,7 @@ export class SceneView {
     // direction.
     const apexPos = moonPos.clone().addScaledVector(shadowDir, this._L_w);
     placeAlongAxis(this.antumbra, apexPos, shadowDir);
+    this.apexMarker.position.copy(apexPos);
 
     // Earth's rotation around +Z is set from Greenwich Apparent Sidereal
     // Time at this instant.
