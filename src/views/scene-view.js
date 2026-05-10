@@ -212,7 +212,7 @@ export class SceneView {
     this.penumbra = new THREE.Mesh(
       new THREE.BufferGeometry(),
       new THREE.MeshBasicMaterial({
-        color: 0xc9a04a, transparent: true, opacity: 0.10, side: THREE.DoubleSide,
+        color: 0xd9b865, transparent: true, opacity: 0.18, side: THREE.DoubleSide,
         depthWrite: false,
       }),
     );
