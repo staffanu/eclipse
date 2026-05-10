@@ -2,14 +2,16 @@
 //
 // Positions come from astronomy-engine in J2000 equatorial coordinates and
 // are placed directly in the Three.js world frame, so world +Z is the
-// celestial pole. Distances use a single linear scale (1 km → 1/80000
-// world units) but body radii are exaggerated for visibility — the umbra
-// and penumbra cones use the actual longitudinal scale (so the apex sits
-// at the right distance along the axis) but are rendered with the same
-// transverse exaggeration as the Moon, which makes them visible without
-// distorting where the shadow reaches. Earth's rotation about its own
-// axis is set from Greenwich apparent sidereal time at the slider's
-// instant, so dragging the slider sweeps the shadow across the surface.
+// celestial pole. Distances and body radii use a single linear scale
+// (1 km → 1/80000 world units), so Earth, Moon, and the umbra / antumbra /
+// penumbra cones are all to actual scale — every linear dimension matches
+// reality. The Sun is the one deliberate deviation: at this DIST_SCALE the
+// real Sun sits ~1875 world units away which would push it well off-screen
+// on every camera pose, so the Sun is capped at SUN_DISPLAY_DIST and its
+// radius is scaled down so its *angular size* still matches the real Sun's
+// (~0.265° angular radius). Earth's rotation about its own axis is set from
+// Greenwich apparent sidereal time at the slider's instant, so dragging the
+// slider sweeps the shadow across the surface.
 
 import * as THREE from "three";
 import * as A from "astronomy-engine";
@@ -22,20 +24,19 @@ const R_MOON_KM = 1_737.4;
 // it at world distance ~5 keeps everything navigable.
 const DIST_SCALE = 1 / 80_000;
 
-// Body radii. Earth is rendered at *exactly* its actual radius in scaled
-// units, so the visual cone-Earth transition (the cone passing through the
-// rendered Earth's silhouette) happens at the same instant as the real
-// eclipse start / end (when the shadow axis is tangent to Earth's actual
-// surface). Moon is modestly exaggerated so its silhouette and the cone
-// base aren't sub-pixel; the Sun keeps its strong exaggeration since it's
-// also distance-capped.
-const SUN_RADIUS_W   = 1.2;
-const EARTH_RADIUS_W = 6_378.137 * DIST_SCALE;   // ~0.0797
-const MOON_RADIUS_W  = 0.04;                     // ~1.8× actual at this scale
-
-// Sun is capped at this world distance — the actual scaled distance (~1850)
-// would push it absurdly far off-screen.
+// Body radii. Earth and Moon are at exactly their actual scaled radii so
+// every linear dimension in the cone geometry (cone base = Moon's actual
+// radius, length = actual L = |M-S|·R_moon/(R_sun-R_moon)) matches reality;
+// the Sun's *radius* is set to whatever makes its *angular size* from
+// origin match the real Sun (~0.265° angular radius). The Sun's *distance*
+// is the only deliberate deviation — at this DIST_SCALE the actual Sun
+// would be ~1875 world units away, so it's capped at SUN_DISPLAY_DIST and
+// the radius is scaled to compensate so the eclipse's Sun-Moon angular
+// match still reads correctly.
 const SUN_DISPLAY_DIST = 60;
+const EARTH_RADIUS_W   = 6_378.137 * DIST_SCALE;                              // actual
+const MOON_RADIUS_W    = R_MOON_KM * DIST_SCALE;                              // actual
+const SUN_RADIUS_W     = SUN_DISPLAY_DIST * R_SUN_KM / AU_KM;                 // matches actual angular size
 
 export class SceneView {
   constructor(container) {
@@ -455,19 +456,20 @@ function parallelPoints(r, latDeg) {
 
 function mag(v) { return Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
 
-// Generate a soft circular gradient texture for the Sun sprite — bright
-// pale-yellow core, falling off to a faint warm halo. Drawn into a canvas
-// once at construction and reused.
+// Generate a soft circular gradient texture for the Sun sprite. The bright
+// (alpha 1) disc fills most of the sprite (out to 80% of the texture
+// radial), so the visible Sun roughly matches `SUN_RADIUS_W`'s angular
+// size from the camera; the remaining 20% is a thin warm halo that fades
+// to transparent at the edge.
 function makeSunTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = 256; canvas.height = 256;
   const ctx = canvas.getContext("2d");
   const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
   grad.addColorStop(0.00, "rgba(255, 245, 200, 1)");
-  grad.addColorStop(0.40, "rgba(255, 226, 122, 1)");
-  grad.addColorStop(0.50, "rgba(255, 220, 110, 1)");
-  grad.addColorStop(0.55, "rgba(255, 180,  80, 0.5)");
-  grad.addColorStop(0.75, "rgba(255, 140,  60, 0.18)");
+  grad.addColorStop(0.75, "rgba(255, 226, 122, 1)");
+  grad.addColorStop(0.82, "rgba(255, 200,  90, 0.6)");
+  grad.addColorStop(0.92, "rgba(255, 140,  60, 0.18)");
   grad.addColorStop(1.00, "rgba(255, 100,  30, 0)");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 256, 256);
