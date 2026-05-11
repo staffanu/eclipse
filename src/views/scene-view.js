@@ -201,11 +201,11 @@ export class SceneView {
   // partial-shadow cone. Both penumbra and antumbra are cut at Earth's
   // center so they don't visually extend past the planet.
   _addShadowCones() {
-    const umbraColor = 0x8a3030;
+    const umbraColor = 0x4a3530;
     this.umbra = new THREE.Mesh(
       new THREE.BufferGeometry(),
       new THREE.MeshBasicMaterial({
-        color: umbraColor, transparent: true, opacity: 0.32, side: THREE.DoubleSide,
+        color: umbraColor, transparent: true, opacity: 0.36, side: THREE.DoubleSide,
         depthWrite: false,
       }),
     );
@@ -221,7 +221,7 @@ export class SceneView {
     // showEclipse() once we know cone_extent_w. Uniforms live on userData so
     // we can update them whether or not the shader has compiled yet.
     const penumbraMat = new THREE.MeshBasicMaterial({
-      color: 0xd9b865, transparent: true, opacity: 0.18, side: THREE.DoubleSide,
+      color: 0xd9b865, transparent: true, opacity: 0.11, side: THREE.DoubleSide,
       depthWrite: false,
     });
     penumbraMat.userData.fadeUniforms = {
@@ -276,8 +276,17 @@ export class SceneView {
     const shadowDirPeak = moonVec.clone().sub(sunVecActual).normalize();
     const cone_extent_w = -moonVec.dot(shadowDirPeak);
 
+    // Truncate the umbra at Earth's center so it never protrudes out the
+    // back of the planet on total eclipses (where the umbral apex is past
+    // Earth). For annular eclipses L_w < cone_extent_w, so the apex falls
+    // short of Earth and the cylinder collapses to a sharp-tipped cone
+    // (top radius 0), matching the original ConeGeometry.
+    const umbLen_w = Math.min(L_w, cone_extent_w);
+    const umbTopRadius = CONE_BASE_W * Math.max(0, 1 - umbLen_w / L_w);
     this.umbra.geometry.dispose();
-    this.umbra.geometry = new THREE.ConeGeometry(CONE_BASE_W, L_w, 64, 1, true);
+    this.umbra.geometry = new THREE.CylinderGeometry(
+      umbTopRadius, CONE_BASE_W, umbLen_w, 64, 1, true,
+    );
     // Antumbra: divergent cone past the umbra apex; for annular eclipses
     // it's what hits Earth (the umbra apex falls short of the planet). For
     // total eclipses the apex is past Earth's center so antuLen_w clamps to
