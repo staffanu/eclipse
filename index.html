@@ -34,8 +34,9 @@
           <input type="number" id="year-input" value="2026" min="-3000" max="9999" step="1" inputmode="numeric" />
           <button id="next-eclipse" aria-label="Next eclipse">&rarr;</button>
           <span class="mobile-buttons">
-            <button class="tab icon-btn" data-tab="map" aria-label="Map view" title="Map">🗺&#xFE0E;</button>
-            <button class="tab icon-btn" data-tab="bottom" aria-label="3D and local view" title="3D and local">☀&#xFE0E;</button>
+            <button class="view-toggle icon-btn active" data-view="map" aria-label="Toggle map view" title="Map">🗺&#xFE0E;</button>
+            <button class="view-toggle icon-btn active" data-view="scene" aria-label="Toggle 3D view" title="3D">🌐&#xFE0E;</button>
+            <button class="view-toggle icon-btn active" data-view="local" aria-label="Toggle local view" title="Local">☀&#xFE0E;</button>
             <button id="more-toggle" class="icon-btn" type="button" aria-label="Details" title="Details">&#x24D8;</button>
           </span>
         </div>

@@ -236,19 +236,27 @@ function formatScrub(_minutes, t) {
   return t.toISOString().slice(11, 19) + " UTC";
 }
 
-// Tab navigation (only used at narrow viewports). Default to the map.
-function setActiveTab(tab) {
-  document.body.dataset.tab = tab;
-  document.querySelectorAll(".tab").forEach(b => {
-    b.classList.toggle("active", b.dataset.tab === tab);
-  });
-  // Force the views to re-measure after the layout change.
+// View toggles (only visible at narrow viewports). Each button independently
+// shows/hides one of the three panels; default is all three on. We always
+// keep at least one panel visible — clicking the last active toggle is a no-op.
+const VIEWS = ["map", "scene", "local"];
+function setViewVisible(view, on) {
+  document.body.classList.toggle(`show-${view}`, on);
+  const btn = document.querySelector(`.view-toggle[data-view="${view}"]`);
+  if (btn) btn.classList.toggle("active", on);
   window.dispatchEvent(new Event("resize"));
 }
-document.querySelectorAll(".tab").forEach(b => {
-  b.addEventListener("click", () => setActiveTab(b.dataset.tab));
+VIEWS.forEach(v => setViewVisible(v, true));
+document.querySelectorAll(".view-toggle").forEach(b => {
+  b.addEventListener("click", () => {
+    const v = b.dataset.view;
+    const on = !document.body.classList.contains(`show-${v}`);
+    if (!on && VIEWS.every(x => x === v || !document.body.classList.contains(`show-${x}`))) {
+      return; // refuse to hide the last visible panel
+    }
+    setViewVisible(v, on);
+  });
 });
-setActiveTab("map");
 
 // Details modal (mobile). On desktop the same #more-controls block is just
 // inlined in the sidebar, so toggling the class is a no-op there.

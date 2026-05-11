@@ -346,7 +346,7 @@ main {
     /* Force text-style (monochrome) presentation of emoji glyphs. */
     font-variant-emoji: text;
   }
-  .icon-btn.tab.active {
+  .icon-btn.view-toggle.active {
     color: var(--text);
     border-color: var(--accent);
   }
@@ -404,10 +404,15 @@ main {
   #time-control { flex: 0 0 auto; }
   .panel { flex: 1; min-height: 0; }
 
-  body[data-tab="map"]    #scene-panel,
-  body[data-tab="map"]    #local-panel,
-  body[data-tab="bottom"] #map-panel { display: none; }
-  body[data-tab="bottom"] #scene-panel { border-right: none; border-bottom: 1px solid var(--border); }
+  body:not(.show-map)   #map-panel,
+  body:not(.show-scene) #scene-panel,
+  body:not(.show-local) #local-panel { display: none; }
+
+  /* In mobile flex-column layout the scene/local row stacks vertically, so
+     turn the desktop right-border into a bottom-border when the local panel
+     is showing beneath it. */
+  #scene-panel { border-right: none; }
+  body.show-scene.show-local #scene-panel { border-bottom: 1px solid var(--border); }
 
   .panel > header {
     font-size: 10px;
