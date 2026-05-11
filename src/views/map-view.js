@@ -90,7 +90,7 @@ export class MapView {
     // *instant* of greatest eclipse (largest umbral diameter). Drawn as a
     // small tick perpendicular to the local path direction in the same
     // colour as the centerline so it reads as part of the path.
-    if (eclipse.latitude != null && eclipse.longitude != null
+    if (Number.isFinite(eclipse.latitude) && Number.isFinite(eclipse.longitude)
         && peakIndex != null && samples.length > 1) {
       const tick = perpendicularTick(samples, peakIndex, eclipse.latitude, eclipse.longitude);
       if (tick) {
@@ -101,7 +101,7 @@ export class MapView {
           )
           .addTo(this.layer);
       }
-      this.map.flyTo([eclipse.latitude, eclipse.longitude], 3, { duration: 0.6 });
+      this.map.setView([eclipse.latitude, eclipse.longitude], 3, { animate: true, duration: 0.6 });
     }
   }
 
@@ -139,7 +139,7 @@ export class MapView {
     let sumLat = 0, sumLon = 0, n = 0;
     for (const p of outer) for (const v of p) { sumLat += v.lat; sumLon += v.lon; n++; }
     if (!n) return;
-    this.map.flyTo([sumLat / n, sumLon / n], 3, { duration: 0.6 });
+    this.map.setView([sumLat / n, sumLon / n], 3, { animate: true, duration: 0.6 });
   }
 
   // Move (or remove) the shadow-center marker driven by the time slider.

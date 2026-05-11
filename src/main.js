@@ -80,12 +80,32 @@ function showEclipse(eclipse) {
 
   // For partial eclipses there's no greatest-eclipse coord to fly to, so
   // pan the map to the centroid of the outer footprint contour instead.
-  const isPartial = eclipse.latitude == null || eclipse.longitude == null;
+  // astronomy-engine returns null *or* NaN for these — guard against both.
+  const isPartial = !Number.isFinite(eclipse.latitude)
+                 || !Number.isFinite(eclipse.longitude);
   if (isPartial) map.flyToFootprint(state.footprintLayers);
 
+  // Snap the observer to the peak point (or footprint centroid for partials)
+  // so the local view defaults to the most interesting spot on Earth for
+  // each new eclipse. We update state and the marker here without calling
+  // setObserver(), because setObserver re-renders local-view, and we want
+  // a single consistent render below — after scene.showEclipse has rebuilt
+  // its geometry for the new eclipse.
+  const peakObs = isPartial
+    ? footprintCenter(state.footprintLayers)
+    : { lat: eclipse.latitude, lon: eclipse.longitude };
+  if (peakObs) {
+    const lon = normalizeLon(peakObs.lon);
+    state.observer = { lat: peakObs.lat, lon };
+    els.obsLat.value = peakObs.lat.toFixed(2);
+    els.obsLon.value = lon.toFixed(2);
+    map.setObserver(peakObs.lat, peakObs.lon);
+  }
+
   scene.showEclipse(eclipse);
-  local.showEclipse(eclipse, state.observer.lat, state.observer.lon, currentScrubTime());
-  updateScrub();  // place the shadow-center marker at peak
+  // updateScrub() handles the local-view and scene time-dependent rendering
+  // at the current slider position (which we just reset to 0 = peak).
+  updateScrub();
 
   const dateStr = eclipse.peak.date.toISOString().replace("T", " ").slice(0, 19) + " UT";
   const lat = eclipse.latitude?.toFixed(2) ?? "—";
@@ -94,22 +114,21 @@ function showEclipse(eclipse) {
     ? `obscuration ${(eclipse.obscuration * 100).toFixed(1)}%`
     : "";
 
-  let body = `Kind:        ${eclipse.kind}\nPeak:        ${dateStr}\n`;
+  let body = `Kind:        ${eclipse.kind}\nPeak:        ${dateStr}`;
   if (isPartial) {
-    body += "(only the penumbra grazes Earth — no totality path)\n";
+    body += "\n(only the penumbra grazes Earth — no totality path)";
   } else {
-    body += `Greatest:    ${lat}°, ${lon}°\n`;
-    if (obs) body += `             ${obs}\n`;
+    body += `\nGreatest:    ${lat}°, ${lon}°`;
+    if (obs) body += `\n             ${obs}`;
   }
-  body += `Year:        ${year}`;
   els.info.textContent = body;
 
   // Update the map panel header so the user immediately sees what's shown.
   els.mapHeader.textContent = isPartial
-    ? "Partial eclipse — yellow region shows where any partial coverage is visible at peak"
+    ? "Partial eclipse"
     : eclipse.kind === "annular"
-      ? "Global path — antumbral footprint with ΔT uncertainty band"
-      : "Global path — umbral footprint with ΔT uncertainty band";
+      ? "Annular eclipse — antumbral path with ΔT uncertainty band"
+      : "Total eclipse — umbral path with ΔT uncertainty band";
 
   const sigma = sigmaDeltaT(year);
   const dt = deltaT(year);
@@ -122,6 +141,15 @@ function showEclipse(eclipse) {
     (Math.abs(year - 2000) > 3000
       ? `<div style="color:#ff5c5c;margin-top:6px">Outside &plusmn;3000 y of J2000: ephemeris accuracy degrades.</div>`
       : "");
+}
+
+function footprintCenter(layers) {
+  if (!layers || !layers.length) return null;
+  const outer = layers[0].polygons;
+  if (!outer.length) return null;
+  let sumLat = 0, sumLon = 0, n = 0;
+  for (const p of outer) for (const v of p) { sumLat += v.lat; sumLon += v.lon; n++; }
+  return n ? { lat: sumLat / n, lon: sumLon / n } : null;
 }
 
 function peakYear(e) {
@@ -197,66 +225,41 @@ function updateScrub() {
   // Move (or hide) the shadow-center marker. The time tooltip pinned to
   // the marker doubles as a "where is the umbra now" readout on the map.
   const sample = shadowSampleAtTime(t);
-  const utLabel = t.toISOString().slice(11, 19) + " UT";
+  const utLabel = t.toISOString().slice(11, 19) + " UTC";
   map.setShadowCenter(sample.lat, sample.lon, sample.kind, utLabel);
   // Refresh the local view and the 3D scene at this instant.
   local.showEclipse(state.eclipse, state.observer.lat, state.observer.lon, t);
   scene.updateForTime(t);
 }
 
-function formatScrub(minutes, t) {
-  const sign = minutes < 0 ? "−" : minutes > 0 ? "+" : "";
-  const totalSec = Math.round(Math.abs(minutes) * 60);
-  const hh = Math.floor(totalSec / 3600);
-  const mm = Math.floor((totalSec % 3600) / 60);
-  const ss = totalSec % 60;
-  const pad = n => String(n).padStart(2, "0");
-  const offset = totalSec === 0
-    ? "peak"
-    : hh ? `peak ${sign}${hh}h ${pad(mm)}m ${pad(ss)}s`
-         : `peak ${sign}${mm}m ${pad(ss)}s`;
-  const utc = t.toISOString().slice(11, 19) + " UTC";
-  return `${offset} · ${utc}`;
+function formatScrub(_minutes, t) {
+  return t.toISOString().slice(11, 19) + " UTC";
 }
 
 // Tab navigation (only used at narrow viewports). Default to the map.
 function setActiveTab(tab) {
   document.body.dataset.tab = tab;
-  document.querySelectorAll("#tab-nav .tab").forEach(b => {
+  document.querySelectorAll(".tab").forEach(b => {
     b.classList.toggle("active", b.dataset.tab === tab);
   });
   // Force the views to re-measure after the layout change.
   window.dispatchEvent(new Event("resize"));
 }
-document.querySelectorAll("#tab-nav .tab").forEach(b => {
+document.querySelectorAll(".tab").forEach(b => {
   b.addEventListener("click", () => setActiveTab(b.dataset.tab));
 });
 setActiveTab("map");
 
-// Mobile sidebar toggles. Hide / show the whole sidebar (giving the panels
-// the full screen) and expand / collapse the "more options" group.
-document.getElementById("sidebar-hide")?.addEventListener("click", () => {
-  document.body.classList.add("sidebar-hidden");
-  window.dispatchEvent(new Event("resize"));
-});
-document.getElementById("sidebar-show")?.addEventListener("click", () => {
-  document.body.classList.remove("sidebar-hidden");
-  window.dispatchEvent(new Event("resize"));
-});
+// Details modal (mobile). On desktop the same #more-controls block is just
+// inlined in the sidebar, so toggling the class is a no-op there.
+const setMore = (open) => document.body.classList.toggle("more-expanded", open);
 document.getElementById("more-toggle")?.addEventListener("click", () => {
-  document.body.classList.toggle("more-expanded");
+  setMore(!document.body.classList.contains("more-expanded"));
 });
+document.getElementById("more-close")?.addEventListener("click", () => setMore(false));
+document.getElementById("more-backdrop")?.addEventListener("click", () => setMore(false));
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
+// showEclipse() snaps the observer to the eclipse's peak point, so we don't
+// query geolocation on startup.
 safe(() => showEclipse(nextEclipseFrom(jan1OfYear(parseInt(els.yearInput.value, 10)))))();
-
-// If the browser will hand us the user's coordinates (cached or freshly
-// granted), use them as the default observer. Otherwise we keep the HTML
-// fallback, Södermalm in Stockholm.
-if (navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(
-    (pos) => setObserver(pos.coords.latitude, pos.coords.longitude),
-    () => { /* denied / timed out — keep the fallback */ },
-    { timeout: 8000, maximumAge: 600_000 },
-  );
-}

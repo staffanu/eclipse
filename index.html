@@ -22,16 +22,10 @@
     </script>
   </head>
   <body>
-    <button id="sidebar-show" type="button" aria-label="Show controls">☰</button>
     <aside id="sidebar">
-      <h1>Eclipse Explorer
-        <span class="header-buttons">
-          <button id="more-toggle" type="button">Details</button>
-          <button id="sidebar-hide" type="button" aria-label="Hide controls">×</button>
-        </span>
-      </h1>
+      <h1>Eclipse Explorer</h1>
 
-      <section class="control">
+      <section class="control date-control">
         <label for="year-input">Eclipse near year</label>
         <div class="row">
           <button id="prev-eclipse" aria-label="Previous eclipse">&larr;</button>
@@ -39,10 +33,20 @@
           <span id="month-display" class="date-part"></span>
           <input type="number" id="year-input" value="2026" min="-3000" max="9999" step="1" inputmode="numeric" />
           <button id="next-eclipse" aria-label="Next eclipse">&rarr;</button>
+          <span class="mobile-buttons">
+            <button class="tab icon-btn" data-tab="map" aria-label="Map view" title="Map">🗺&#xFE0E;</button>
+            <button class="tab icon-btn" data-tab="bottom" aria-label="3D and local view" title="3D and local">☀&#xFE0E;</button>
+            <button id="more-toggle" class="icon-btn" type="button" aria-label="Details" title="Details">&#x24D8;</button>
+          </span>
         </div>
       </section>
 
       <div id="more-controls">
+        <div class="more-header">
+          <span>Details</span>
+          <button id="more-close" type="button" aria-label="Close details">×</button>
+        </div>
+
         <p class="hint" id="date-hint">Type a year and the nearest eclipse is shown. Use &larr;&nbsp;/&nbsp;&rarr; to step. Range: roughly &minus;3000 to +7000; uncertainty grows quickly outside &plusmn;500&nbsp;y of today.</p>
 
         <section class="control">
@@ -59,7 +63,7 @@
             <input type="checkbox" id="show-footprint" checked />
             Show penumbra footprint
           </label>
-          <p class="hint">Yellow region shows where any partial eclipse is visible from the ground at peak time.</p>
+          <p class="hint">Yellow region shows where any partial eclipse is visible from the ground at some point during the event.</p>
         </section>
 
         <section id="info" class="control"></section>
@@ -68,32 +72,28 @@
           <label>&Delta;T uncertainty (1&sigma;)</label>
           <div id="dt-info" class="hint"></div>
         </section>
-      </div>
 
-      <footer>
-        <p class="hint">
-          Geometry from <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">astronomy-engine</a>.
-          Long-term &Delta;T from Morrison &amp; Stephenson (2004) parabola; 1&sigma; uncertainty per
-          Stephenson, Morrison &amp; Hohenkerk (2016).
-        </p>
-      </footer>
+        <footer>
+          <p class="hint">
+            Geometry from <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">astronomy-engine</a>.
+            Long-term &Delta;T from Morrison &amp; Stephenson (2004) parabola; 1&sigma; uncertainty per
+            Stephenson, Morrison &amp; Hohenkerk (2016).
+          </p>
+        </footer>
+      </div>
     </aside>
+    <div id="more-backdrop"></div>
 
     <main>
-      <nav id="tab-nav">
-        <button class="tab" data-tab="map">Map</button>
-        <button class="tab" data-tab="bottom">Scene &amp; local</button>
-      </nav>
+      <div id="time-control">
+        <span id="time-display">peak</span>
+        <input type="range" id="time-slider" min="-120" max="120" value="0" step="0.05" />
+      </div>
 
       <section id="map-panel" class="panel">
         <header id="map-header">Global path &mdash; umbral centerline with &Delta;T uncertainty band</header>
         <div id="map"></div>
       </section>
-
-      <div id="time-control">
-        <span id="time-display">peak</span>
-        <input type="range" id="time-slider" min="-120" max="120" value="0" step="0.05" />
-      </div>
 
       <section id="scene-panel" class="panel">
         <header>3D Sun &middot; Moon &middot; Earth (not to scale)</header>
