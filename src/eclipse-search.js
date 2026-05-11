@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 // Thin wrapper around astronomy-engine's eclipse search to support stepping
 // forward and backward in time, and finding the nearest eclipse to a date.
 

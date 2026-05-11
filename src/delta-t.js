@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 // Long-term Delta T model and its 1-sigma uncertainty.
 //
 // Delta T = TT - UT1 (seconds). For dates within ~1955-present we know it from

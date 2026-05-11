@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 import { installOverride, sigmaDeltaT, deltaT } from "./delta-t.js";
 import { nextEclipseFrom, nextEclipseAfter, prevEclipseBefore } from "./eclipse-search.js";
 import { computeShadowPath, shadowSampleAtTime } from "./path.js";

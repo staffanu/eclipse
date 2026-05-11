@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 // Penumbral footprint: the region on Earth's surface where any partial solar
 // eclipse is visible at a given instant.
 //

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 // 3D Sun-Earth-Moon scene driven by the time slider.
 //
 // Positions come from astronomy-engine in J2000 equatorial coordinates and

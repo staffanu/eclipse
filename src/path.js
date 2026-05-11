@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 // Compute the umbral / antumbral / penumbral footprints of a solar eclipse on
 // Earth's surface by intersecting the Moon's shadow cone with the WGS84
 // ellipsoid model of Earth.

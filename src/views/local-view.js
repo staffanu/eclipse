@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 // Local-observer view: an SVG showing the Sun's disk with the Moon's disk
 // transiting across it, sampled at the eclipse peak instant for the chosen
 // observer location.

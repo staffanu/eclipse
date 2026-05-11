@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 // Translate a Delta T uncertainty (sigma seconds) into a ground-track shift.
 //
 // A 1-sigma error in Delta T means the actual eclipse occurs sigma seconds

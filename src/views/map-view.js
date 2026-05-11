@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Staffan Ulfberg
+
 import L from "leaflet";
 import { uncertaintyQuads, normalizeLon } from "../uncertainty.js";
 
