@@ -114,11 +114,11 @@ export class LocalView {
     }
 
     const labelStyle = sunHor.altitude < -6 ? "#cdd9e6" : "#1a1410";
-    this.svg.appendChild(text(-0.65, 1.30, status, "0.11", labelStyle));
+    this.svg.appendChild(text(-0.7, 1.27, status, "0.14", labelStyle));
     const detail = sunHor.altitude > 0
       ? `obscuration ${(obscur * 100).toFixed(1)}%   ·   Sun alt ${sunHor.altitude.toFixed(1)}°`
       : `Sun alt ${sunHor.altitude.toFixed(1)}°   ·   Moon alt ${moonHor.altitude.toFixed(1)}°`;
-    this.svg.appendChild(text(-0.65, 1.43, detail, "0.085", labelStyle));
+    this.svg.appendChild(text(-0.7, 1.44, detail, "0.11", labelStyle));
   }
 }
 
