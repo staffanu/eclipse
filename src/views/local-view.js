@@ -47,8 +47,15 @@ export class LocalView {
 
     const sunEq = A.Equator(A.Body.Sun, t, observer, true, true);
     const moonEq = A.Equator(A.Body.Moon, t, observer, true, true);
-    const sunHor = A.Horizon(t, observer, sunEq.ra, sunEq.dec, "normal");
-    const moonHor = A.Horizon(t, observer, moonEq.ra, moonEq.dec, "normal");
+    // Unrefracted horizon coordinates (refraction = null) for both bodies
+    // so the moon's position relative to the sun stays smooth across
+    // sunset. The "normal" refraction model has a hard cutoff near
+    // altitude −1° and is strongly non-linear at the horizon (≈35′ at
+    // alt 0); applied independently to two bodies of slightly different
+    // altitudes it produces a visible jump in their relative offset
+    // right at sundown.
+    const sunHor = A.Horizon(t, observer, sunEq.ra, sunEq.dec, null);
+    const moonHor = A.Horizon(t, observer, moonEq.ra, moonEq.dec, null);
 
     const sunDistKm = sunEq.dist * AU_KM;
     const moonDistKm = moonEq.dist * AU_KM;
@@ -89,22 +96,29 @@ export class LocalView {
       this.svg.appendChild(circle(0, 0, 1.25, "url(#sunGlow)"));
     }
 
-    // The Sun's apparent colour shifts from pale yellow high in the sky to
-    // deep red near and below the horizon, fading to a dim ember well below.
-    this.svg.appendChild(circle(0, 0, 1, sunDiskColor(sunHor.altitude)));
+    // The Sun's apparent colour: bright yellow/orange above the horizon,
+    // dim ember below. When the horizon crosses the disk, the upper and
+    // lower segments are filled with their respective colours so the
+    // disk itself shows the sunset/sunrise transition.
+    const horizonY = sunHor.altitude * 60 / sunR_arcmin;
+    const aboveColor = sunDiskColor(Math.max(sunHor.altitude, 0));
+    const belowColor = sunDiskColor(Math.min(sunHor.altitude, 0) - 0.001);
+    if (horizonY >= 1) {
+      this.svg.appendChild(circle(0, 0, 1, aboveColor));
+    } else if (horizonY <= -1) {
+      this.svg.appendChild(circle(0, 0, 1, belowColor));
+    } else {
+      const clipDefs = document.createElementNS(SVG_NS, "defs");
+      clipDefs.innerHTML = `<clipPath id="sunClip"><circle cx="0" cy="0" r="1"/></clipPath>`;
+      this.svg.appendChild(clipDefs);
+      const g = document.createElementNS(SVG_NS, "g");
+      g.setAttribute("clip-path", "url(#sunClip)");
+      g.appendChild(rect(-1, -1, 2, horizonY + 1, aboveColor));
+      g.appendChild(rect(-1, horizonY, 2, 1 - horizonY, belowColor));
+      this.svg.appendChild(g);
+    }
     // Moon disk: dark silhouette by day, slightly grey at night.
     this.svg.appendChild(circle(mx, my, moonR, sunHor.altitude > 0 ? "#101418" : "#2a2e36"));
-
-    // If the geometric horizon happens to fall within the close-up zoom
-    // (sunset / sunrise), draw it as a faint line — no separate ground
-    // colour; the sky-color gradient on its own already conveys the
-    // time-of-day transition smoothly. Fade the line in/out to avoid a
-    // hard pop at the edges of the threshold.
-    const horizonY = sunHor.altitude * 60 / sunR_arcmin;
-    const horizonFade = clamp((1.4 - Math.abs(horizonY)) / 0.4, 0, 1);
-    if (horizonFade > 0 && Math.abs(horizonY) < 1.4) {
-      this.svg.appendChild(line(-1.5, horizonY, 1.5, horizonY, `rgba(255,200,140,${0.7 * horizonFade})`, 0.015));
-    }
 
     drawAltitudeInset(this.altInset, sunHor.altitude, moonHor.altitude);
 
@@ -217,15 +231,13 @@ function skyColor(altitude) {
 }
 
 function sunDiskColor(altitude) {
-  // Bright yellow high up, deep red at horizon, dim ember below.
+  // Bright yellow high up, deep orange at the horizon; below the horizon
+  // the disk is a dim ember. The hard transition is at altitude 0 so that
+  // the sunset/sunrise split-disk rendering uses crisp upper/lower colours.
   if (altitude >= 10) return "#ffe27a";
   if (altitude >= 0) {
     const t = altitude / 10;
     return rgb(lerp3([255, 144,  72], [255, 226, 122], t));
-  }
-  if (altitude >= -6) {
-    const t = (altitude + 6) / 6;
-    return rgb(lerp3([130,  44,  28], [255, 144,  72], t));
   }
   return "#3a1410";
 }
