@@ -154,6 +154,11 @@ export class SceneView {
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
     this.sunLight.target = this.earth;
     this.scene.add(this.sunLight);
+
+    // Low ambient light so the Earth texture's continents remain readable
+    // where the penumbra cone darkens the day side. The directional sunlight
+    // alone leaves shadowed regions nearly black against the map texture.
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.35));
   }
 
   // Wireframe meridians, parallels and a polar axis on Earth — gives the
@@ -211,13 +216,33 @@ export class SceneView {
         depthWrite: false,
       }),
     );
-    this.penumbra = new THREE.Mesh(
-      new THREE.BufferGeometry(),
-      new THREE.MeshBasicMaterial({
-        color: 0xd9b865, transparent: true, opacity: 0.18, side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
-    );
+    // Penumbra fades along the cone axis (local +Y) so it can extend behind
+    // Earth without a hard cutoff. uFadeStart/uFadeEnd are set per-eclipse in
+    // showEclipse() once we know cone_extent_w. Uniforms live on userData so
+    // we can update them whether or not the shader has compiled yet.
+    const penumbraMat = new THREE.MeshBasicMaterial({
+      color: 0xd9b865, transparent: true, opacity: 0.18, side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    penumbraMat.userData.fadeUniforms = {
+      uFadeStart: { value: 0 },
+      uFadeEnd: { value: 1 },
+    };
+    penumbraMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uFadeStart = penumbraMat.userData.fadeUniforms.uFadeStart;
+      shader.uniforms.uFadeEnd   = penumbraMat.userData.fadeUniforms.uFadeEnd;
+      shader.vertexShader = "varying float vLocalY;\n" + shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nvLocalY = position.y;",
+      );
+      shader.fragmentShader =
+        "varying float vLocalY;\nuniform float uFadeStart;\nuniform float uFadeEnd;\n" +
+        shader.fragmentShader.replace(
+          "#include <opaque_fragment>",
+          "diffuseColor.a *= 1.0 - smoothstep(uFadeStart, uFadeEnd, vLocalY);\n#include <opaque_fragment>",
+        );
+    };
+    this.penumbra = new THREE.Mesh(new THREE.BufferGeometry(), penumbraMat);
     // Penumbra first so umbra/antumbra paint over it where they overlap.
     this.scene.add(this.penumbra);
     this.scene.add(this.antumbra);
@@ -265,14 +290,23 @@ export class SceneView {
     this.antumbra.geometry = new THREE.CylinderGeometry(
       antuTopRadius, 0, antuLen_w, 64, 1, true,
     );
-    // Penumbra: divergent cone that grows from R_moon at the Moon outward,
-    // ending at Earth's center.
-    const penLen_w = cone_extent_w;
+    // Penumbra: divergent cone that grows from R_moon at the Moon outward.
+    // Extend it past Earth's center by a few Earth radii and let the shader
+    // fade the alpha out across that tail, so the cone dissolves smoothly
+    // behind Earth instead of stopping at a hard disc at Earth's center.
+    const penExtraLen_w = EARTH_RADIUS_W * 6;
+    const penLen_w = cone_extent_w + penExtraLen_w;
     const penTopRadius_w = CONE_BASE_W * (1 + penLen_w / L_w);
     this.penumbra.geometry.dispose();
     this.penumbra.geometry = new THREE.CylinderGeometry(
       penTopRadius_w, CONE_BASE_W, penLen_w, 64, 1, true,
     );
+    // Local +Y end of the cone is at penLen_w/2; Earth's center sits at
+    // local Y = penLen_w/2 - penExtraLen_w. Begin fading slightly before
+    // Earth's center so the dissolve hides the silhouette transition.
+    const penFadeUniforms = this.penumbra.material.userData.fadeUniforms;
+    penFadeUniforms.uFadeStart.value = penLen_w / 2 - penExtraLen_w - EARTH_RADIUS_W * 0.8;
+    penFadeUniforms.uFadeEnd.value   = penLen_w / 2;
     this._L_w = L_w;   // cached so updateForTime can place the antumbra apex
 
     this.updateForTime(eclipse.peak.date);
@@ -335,7 +369,7 @@ export class SceneView {
     if (perp.lengthSq() < 1e-6) perp.set(1, 0, 0);
     perp.normalize();
     const camDir = moonDir.clone().applyAxisAngle(perp, 30 * Math.PI / 180);
-    this.camera.position.copy(camDir.multiplyScalar(moonPos.length() * 1.5));
+    this.camera.position.copy(camDir.multiplyScalar(moonPos.length() * 1.5 / 10));
     this.camera.lookAt(0, 0, 0);
   }
 
