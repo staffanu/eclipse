@@ -11,7 +11,8 @@ installOverride();
 
 const els = {
   yearInput: document.getElementById("year-input"),
-  snappedDate: document.getElementById("snapped-date"),
+  dayDisplay: document.getElementById("day-display"),
+  monthDisplay: document.getElementById("month-display"),
   prev: document.getElementById("prev-eclipse"),
   next: document.getElementById("next-eclipse"),
   timeSlider: document.getElementById("time-slider"),
@@ -128,17 +129,15 @@ function peakYear(e) {
   return d.getUTCFullYear() + (d.getUTCMonth() + d.getUTCDate() / 31) / 12;
 }
 
-// Reflect the snapped eclipse back to the year input plus a small label
-// showing the actual peak date (since the year alone hides which eclipse
-// within the year is shown).
+// Reflect the snapped eclipse back to the day / month displays and the
+// year input — day and month are read-only labels (they update with the
+// search), only the year is typeable.
 function syncYearInput(eclipse) {
   const d = eclipse.peak.date;
-  const y = d.getUTCFullYear();
-  els.yearInput.value = String(y);
+  els.yearInput.value = String(d.getUTCFullYear());
+  els.dayDisplay.textContent = String(d.getUTCDate());
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const ySigned = y < 0 ? `${-y} BCE` : String(y);
-  els.snappedDate.textContent =
-    `→ ${d.getUTCDate()} ${months[d.getUTCMonth()]} ${ySigned}`;
+  els.monthDisplay.textContent = months[d.getUTCMonth()];
 }
 
 function refDate() {

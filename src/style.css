@@ -77,6 +77,14 @@ body {
   min-width: 0;
 }
 
+.date-part {
+  flex: 0 0 auto;
+  padding: 6px 6px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .control .row > button {
   width: auto;
   flex: 0 0 auto;

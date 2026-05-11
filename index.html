@@ -35,10 +35,11 @@
         <label for="year-input">Eclipse near year</label>
         <div class="row">
           <button id="prev-eclipse" aria-label="Previous eclipse">&larr;</button>
+          <span id="day-display" class="date-part"></span>
+          <span id="month-display" class="date-part"></span>
           <input type="number" id="year-input" value="2026" min="-3000" max="9999" step="1" inputmode="numeric" />
           <button id="next-eclipse" aria-label="Next eclipse">&rarr;</button>
         </div>
-        <p class="hint" id="snapped-date">&nbsp;</p>
       </section>
 
       <div id="more-controls">
