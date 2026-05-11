@@ -56,6 +56,8 @@ export class MapView {
 
     // Uncertainty band: one small quadrilateral per path step. Adjacent
     // quads share edges, so they paint as one continuous shaded band.
+    // Drawn at low opacity so the (more solid) footprint polygon below
+    // reads clearly on top of it.
     const drawBand = (quads, opacity) => {
       for (const q of quads) {
         L.polygon(q, {
@@ -64,16 +66,23 @@ export class MapView {
         }).addTo(this.layer);
       }
     };
-    drawBand(uncertaintyQuads(samples, year, 3), 0.08);
-    drawBand(uncertaintyQuads(samples, year, 1), 0.18);
+    drawBand(uncertaintyQuads(samples, year, 3), 0.05);
+    drawBand(uncertaintyQuads(samples, year, 1), 0.11);
 
-    // Centerline, broken when axis misses Earth or wraps the antimeridian.
+    // Footprint of totality (or annularity): a filled polygon whose width
+    // perpendicular to the path equals the umbra (or antumbra) cone radius
+    // at the surface. This shows the actual strip of Earth that experiences
+    // total / annular eclipse, not just the centerline.
     const segments = breakSegments(samples);
     for (const seg of segments) {
       const color = seg[0].kind === "annular" ? "#ffd75c" : "#ff5c5c";
-      L.polyline(seg.map((s) => [s.lat, s.lon]), {
-        color, weight: 3, opacity: 0.9,
-      }).addTo(this.layer);
+      const ring = footprintRing(seg);
+      if (ring.length >= 3) {
+        L.polygon(ring, {
+          color, weight: 1, opacity: 0.9,
+          fillColor: color, fillOpacity: 0.55,
+        }).addTo(this.layer);
+      }
     }
 
     // Greatest-eclipse marker. Totality occurs along the entire centerline
@@ -217,6 +226,32 @@ function breakSegments(samples) {
   }
   if (cur.length > 1) segs.push(cur);
   return segs;
+}
+
+// Build a closed ring around the path: walk forward along the left side
+// (perpendicular offset by widthKm) and back along the right. The path
+// direction is estimated by centred finite difference on the lat/lon grid
+// in a flat metric (lon scaled by cos(lat)), so the perpendicular offset
+// stays visually perpendicular on the Mercator projection at any latitude.
+function footprintRing(seg) {
+  const left = [], right = [];
+  for (let i = 0; i < seg.length; i++) {
+    const a = seg[Math.max(0, i - 1)];
+    const b = seg[Math.min(seg.length - 1, i + 1)];
+    const p = seg[i];
+    const cosLat = Math.cos(p.lat * Math.PI / 180);
+    const dx = (b.lon - a.lon) * cosLat;
+    const dy = b.lat - a.lat;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue;
+    const ux = dx / len, uy = dy / len;
+    const halfDeg = (p.widthKm || 0) / 111.32;
+    const offLat =  ux * halfDeg;
+    const offLon = -uy * halfDeg / Math.max(0.05, cosLat);
+    left.push([p.lat + offLat, p.lon + offLon]);
+    right.push([p.lat - offLat, p.lon - offLon]);
+  }
+  return [...left, ...right.reverse()];
 }
 
 // If the band crosses the antimeridian, Leaflet would draw a wrap-around line.

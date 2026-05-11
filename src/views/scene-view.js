@@ -24,23 +24,19 @@ const R_MOON_KM = 1_737.4;
 // it at world distance ~5 keeps everything navigable.
 const DIST_SCALE = 1 / 80_000;
 
-// Body radii. Earth and Moon are at exactly their actual scaled radii (so
-// the cone's longitudinal scale and the cone-Earth visual interaction are
-// physically correct in their long-axis dimensions). The cones, however,
-// are *transversely* fattened by CONE_FATNESS — at actual-scale half-angle
-// (~0.27°) the umbra cone narrows to ~50 km wide where it crosses Earth's
-// surface, which is sub-pixel at any reasonable camera distance, so the
-// cone visibly disappears thousands of km before it actually clears Earth.
-// 3× exaggeration gives the cones enough thickness near Earth to read as
-// "passing through" while keeping the longitudinal geometry honest. The
-// Sun is the other deliberate deviation: at this DIST_SCALE the real Sun
+// Body radii. Earth, Moon, and the cones are all at exactly their actual
+// scaled radii so the cone-Earth visual interaction is physically correct.
+// The Sun is the one deliberate deviation: at this DIST_SCALE the real Sun
 // sits ~1875 world units away, so it's capped at SUN_DISPLAY_DIST and its
-// radius is set so its angular size still matches the real Sun's.
+// radius is set so its angular size still matches the real Sun's. The
+// shadow-axis direction is computed from the *actual* Sun position, not
+// from this capped display position — otherwise as the Moon moves, the
+// axis would swing far faster than reality and the cone would sweep off
+// Earth long before the real eclipse ends.
 const SUN_DISPLAY_DIST  = 60;
 const EARTH_RADIUS_W    = 6_378.137 * DIST_SCALE;
 const MOON_RADIUS_W     = R_MOON_KM * DIST_SCALE;
-const CONE_FATNESS      = 3;                                     // visibility-only transverse fudge
-const CONE_BASE_W       = MOON_RADIUS_W * CONE_FATNESS;
+const CONE_BASE_W       = MOON_RADIUS_W;
 const SUN_RADIUS_W      = SUN_DISPLAY_DIST * R_SUN_KM / AU_KM;
 
 export class SceneView {
@@ -195,9 +191,10 @@ export class SceneView {
   // are equal — past the apex the Moon is geometrically "smaller" than the
   // Sun, so an observer there sees an annular eclipse. The antumbra (same
   // red, paler) extends past the apex and is what hits Earth for annular
-  // eclipses; for total eclipses it's still drawn but the apex falls
-  // beyond Earth so the antumbra section is in space behind the planet.
-  // The penumbra (pale yellow) is the much wider partial-shadow cone.
+  // eclipses; for total eclipses the apex falls beyond Earth so its base is
+  // hidden inside the planet. The penumbra (pale yellow) is the much wider
+  // partial-shadow cone. Both penumbra and antumbra are cut at Earth's
+  // center so they don't visually extend past the planet.
   _addShadowCones() {
     const umbraColor = 0x8a3030;
     this.umbra = new THREE.Mesh(
@@ -244,28 +241,32 @@ export class SceneView {
     const L_km = sunMoonKm * R_MOON_KM / (R_SUN_KM - R_MOON_KM);
     const L_w  = L_km * DIST_SCALE;
 
-    // Cut both penumbra and antumbra so they only extend a couple of Earth
-    // radii past Earth's far surface, instead of doubling the umbra length.
-    // Past that point the cones don't tell us anything new and just look
-    // like long needles dangling into empty space.
-    const moonDist_w = mag({ x: moonV.x, y: moonV.y, z: moonV.z }) * AU_KM * DIST_SCALE;
-    const cone_extent_w = moonDist_w + EARTH_RADIUS_W * 2;
+    // Cut both penumbra and antumbra at Earth's center so they don't extend
+    // past the planet. We compute the parameter along the shadow axis at
+    // which the axis passes closest to Earth's center; during an eclipse
+    // this is very nearly the Moon-to-Earth-center distance, but solving
+    // it properly handles the slight off-axis geometry too.
+    const moonVec = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    const sunVecActual = new THREE.Vector3(sunV.x, sunV.y, sunV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    const shadowDirPeak = moonVec.clone().sub(sunVecActual).normalize();
+    const cone_extent_w = -moonVec.dot(shadowDirPeak);
 
     this.umbra.geometry.dispose();
     this.umbra.geometry = new THREE.ConeGeometry(CONE_BASE_W, L_w, 64, 1, true);
     // Antumbra: divergent cone past the umbra apex; for annular eclipses
-    // it's what hits Earth (the umbra apex falls short of the planet).
-    // Length runs from apex (radius 0) to a small margin past Earth's far
-    // side; transverse radius grows at the same rate the umbra was
-    // shrinking, so apex-to-Earth proportions stay correct.
+    // it's what hits Earth (the umbra apex falls short of the planet). For
+    // total eclipses the apex is past Earth's center so antuLen_w clamps to
+    // a tiny stub that's effectively hidden. Transverse radius grows at the
+    // same rate the umbra was shrinking, so apex-to-Earth proportions stay
+    // correct.
     const antuLen_w = Math.max(0.05, cone_extent_w - L_w);
     const antuTopRadius = CONE_BASE_W * (antuLen_w / L_w);
     this.antumbra.geometry.dispose();
     this.antumbra.geometry = new THREE.CylinderGeometry(
       antuTopRadius, 0, antuLen_w, 64, 1, true,
     );
-    // Penumbra: divergent cone that grows from R_moon at the Moon outward.
-    // Same end length as the antumbra (just past Earth).
+    // Penumbra: divergent cone that grows from R_moon at the Moon outward,
+    // ending at Earth's center.
     const penLen_w = cone_extent_w;
     const penTopRadius_w = CONE_BASE_W * (1 + penLen_w / L_w);
     this.penumbra.geometry.dispose();
@@ -292,15 +293,19 @@ export class SceneView {
     const moonV = A.GeoMoon(t);
 
     const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
-    const sunDir  = new THREE.Vector3(sunV.x,  sunV.y,  sunV.z).normalize();
+    const sunPosActual = new THREE.Vector3(sunV.x, sunV.y, sunV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    const sunDir  = sunPosActual.clone().normalize();
     const sunPos  = sunDir.clone().multiplyScalar(SUN_DISPLAY_DIST);
 
     this.sun.position.copy(sunPos);
     this.moon.position.copy(moonPos);
     this.sunLight.position.copy(sunPos);
 
-    // Shadow axis: from Sun toward Moon, then beyond.
-    const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPos).normalize();
+    // Shadow axis: from the *actual* Sun position toward the Moon. Using
+    // the capped display position here would make the axis swing too fast
+    // as the Moon moves (the lever arm would be ~30× too short), and the
+    // cone would clear Earth far earlier than the real eclipse end time.
+    const shadowDir = new THREE.Vector3().subVectors(moonPos, sunPosActual).normalize();
     placeAlongAxis(this.umbra, moonPos, shadowDir);
     placeAlongAxis(this.penumbra, moonPos, shadowDir);
     // Antumbra base sits at the umbral apex, point pointing back toward
@@ -319,16 +324,19 @@ export class SceneView {
     if (!this.eclipse) return;
     const moonV = A.GeoMoon(this.eclipse.peak);
     const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
+    // View from the Moon side, tilted 30° off the Moon-Earth line so the
+    // camera sits well outside the penumbra (~0.27° half-angle) and looks
+    // "down" at the scene. Tilt is around an axis perpendicular to both
+    // Moon-direction and the celestial pole, which lifts the camera above
+    // the equatorial plane and gives a 3/4 view of Earth and the cones.
+    const moonDir = moonPos.clone().normalize();
     const polar = new THREE.Vector3(0, 0, 1);
-    let side = new THREE.Vector3().crossVectors(moonPos, polar);
-    if (side.lengthSq() < 1e-6) side.set(0, 1, 0);
-    side.normalize();
-    const midpoint = moonPos.clone().multiplyScalar(0.5);
-    this.camera.position.copy(midpoint
-      .clone()
-      .addScaledVector(side, 7)
-      .addScaledVector(polar, 1.8));
-    this.camera.lookAt(midpoint);
+    let perp = new THREE.Vector3().crossVectors(moonDir, polar);
+    if (perp.lengthSq() < 1e-6) perp.set(1, 0, 0);
+    perp.normalize();
+    const camDir = moonDir.clone().applyAxisAngle(perp, 30 * Math.PI / 180);
+    this.camera.position.copy(camDir.multiplyScalar(moonPos.length() * 1.5));
+    this.camera.lookAt(0, 0, 0);
   }
 
   _loop() {

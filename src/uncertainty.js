@@ -25,28 +25,60 @@ export function pathUncertaintyDeg(year) {
 // leaves open curves that Leaflet closes with straight chords running from
 // the start of the path to the end, painting a spurious stripe.
 //
-// Each quad spans one (sample i, sample i+1) interval. Quads where the path
-// itself wraps the antimeridian, or where the ±dlon shift would push a
-// vertex over ±180°, are skipped — that produces a small gap in the band at
-// the wrap location, mirroring the path's own break there.
+// Each quad spans one (sample i, sample i+1) interval, shifted east-west by
+// ±dlon (the ΔT-uncertainty extent) and inflated perpendicular to the path
+// by the footprint half-width — so the band always visually encompasses
+// the totality / annularity strip, even when ΔT uncertainty is tiny.
+//
+// Quads where the path itself wraps the antimeridian, or where the
+// outermost vertex would push past ±180°, are skipped — producing a small
+// gap in the band at the wrap location, mirroring the path's own break.
 export function uncertaintyQuads(samples, year, sigmas = 1) {
   const dlon = pathUncertaintyDeg(year) * sigmas;
-  if (dlon <= 0) return [];
   const quads = [];
   for (let i = 0; i < samples.length - 1; i++) {
     const a = samples[i], b = samples[i + 1];
     if (a.lat == null || b.lat == null) continue;
-    if (Math.abs(a.lon - b.lon) > 180) continue;             // path itself wraps here
-    if (a.lon + dlon > 180 || a.lon - dlon < -180) continue; // shifted vertex would wrap
-    if (b.lon + dlon > 180 || b.lon - dlon < -180) continue;
+    if (Math.abs(a.lon - b.lon) > 180) continue;
+    const offA = perpOffset(samples, i);
+    const offB = perpOffset(samples, i + 1);
+    const lonExtA = dlon + Math.abs(offA.dLon);
+    const lonExtB = dlon + Math.abs(offB.dLon);
+    if (a.lon + lonExtA > 180 || a.lon - lonExtA < -180) continue;
+    if (b.lon + lonExtB > 180 || b.lon - lonExtB < -180) continue;
+    if (dlon === 0 && offA.dLat === 0 && offA.dLon === 0
+                   && offB.dLat === 0 && offB.dLon === 0) continue;
     quads.push([
-      [a.lat, a.lon - dlon],
-      [b.lat, b.lon - dlon],
-      [b.lat, b.lon + dlon],
-      [a.lat, a.lon + dlon],
+      [a.lat + offA.dLat, a.lon + offA.dLon - dlon],
+      [b.lat + offB.dLat, b.lon + offB.dLon - dlon],
+      [b.lat - offB.dLat, b.lon - offB.dLon + dlon],
+      [a.lat - offA.dLat, a.lon - offA.dLon + dlon],
     ]);
   }
   return quads;
+}
+
+// Half-width perpendicular offset (in lat/lon degrees) at sample i, using
+// a centred difference of the path direction. Returns {0,0} if a direction
+// can't be estimated or this sample has no footprint width.
+function perpOffset(samples, i) {
+  const p = samples[i];
+  if (p == null || p.lat == null) return { dLat: 0, dLon: 0 };
+  const aIdx = Math.max(0, i - 1);
+  const bIdx = Math.min(samples.length - 1, i + 1);
+  const a = samples[aIdx].lat != null ? samples[aIdx] : p;
+  const b = samples[bIdx].lat != null ? samples[bIdx] : p;
+  if (a === b) return { dLat: 0, dLon: 0 };
+  const cosLat = Math.cos(p.lat * Math.PI / 180);
+  const dx = (b.lon - a.lon) * cosLat;
+  const dy = b.lat - a.lat;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return { dLat: 0, dLon: 0 };
+  const halfDeg = (p.widthKm || 0) / 111.32;
+  return {
+    dLat:  (dx / len) * halfDeg,
+    dLon: -(dy / len) * halfDeg / Math.max(0.05, cosLat),
+  };
 }
 
 export function normalizeLon(lon) {
