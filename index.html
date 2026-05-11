@@ -25,7 +25,10 @@
     <button id="sidebar-show" type="button" aria-label="Show controls">☰</button>
     <aside id="sidebar">
       <h1>Eclipse Explorer
-        <button id="sidebar-hide" type="button" aria-label="Hide controls">×</button>
+        <span class="header-buttons">
+          <button id="more-toggle" type="button">Details</button>
+          <button id="sidebar-hide" type="button" aria-label="Hide controls">×</button>
+        </span>
       </h1>
 
       <section class="control">
@@ -36,8 +39,6 @@
           <button id="next-eclipse" aria-label="Next eclipse">&rarr;</button>
         </div>
       </section>
-
-      <button id="more-toggle" type="button">Details</button>
 
       <div id="more-controls">
         <p class="hint" id="date-hint">Pick any date and the nearest eclipse is shown. Use &larr;&nbsp;/&nbsp;&rarr; to step. Range: roughly &minus;3000 to +7000; uncertainty grows quickly outside &plusmn;500&nbsp;y of today.</p>

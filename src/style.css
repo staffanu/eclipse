@@ -266,10 +266,14 @@ main {
   /* Collapse the long footer on mobile to save space. */
   #sidebar footer { display: none; }
 
-  /* Sidebar hide / show toggle so the user can collapse all controls
-     (date nav included) and give the panels the whole screen.
-     Both buttons are 26x26 icon buttons pinned to the top-right corner
-     so the toggle stays in the same spot as the user taps it. */
+  /* Sidebar hide button + Details toggle sit together at top-right of the
+     H1 row. The show button (☰) is pinned to the same spot via fixed
+     positioning so the open/close icons swap in place. */
+  .header-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
   #sidebar-hide,
   #sidebar-show {
     display: inline-flex;
@@ -280,15 +284,6 @@ main {
     font-size: 18px;
     line-height: 1;
     border-radius: 4px;
-  }
-  #sidebar-hide {
-    position: fixed;
-    top: 6px;
-    right: 6px;
-    z-index: 1000;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    color: var(--text);
   }
   body.sidebar-hidden #sidebar { display: none; }
   body.sidebar-hidden #sidebar-show { display: inline-flex; }
@@ -302,18 +297,19 @@ main {
     color: var(--text);
   }
 
-  /* "More options" toggle: hides observer, footprint switch, info,
-     ΔT panel by default; tap to expand. */
+  /* Details toggle: small inline button next to the close icon. Hides
+     observer, footprint switch, info, ΔT panel by default; tap to expand. */
   #more-toggle {
-    display: block;
-    width: 100%;
-    padding: 8px;
-    margin-bottom: 8px;
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    width: auto;
+    padding: 0 8px;
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--text);
     font-size: 12px;
-    text-align: left;
+    border-radius: 4px;
   }
   #more-controls { display: none; }
   body.more-expanded #more-controls { display: block; }
