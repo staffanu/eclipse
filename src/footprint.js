@@ -40,26 +40,62 @@ export function computeFootprintLayers(time) {
   return FOOTPRINT_CONTOURS.map(({ threshold, fillOpacity }) => ({
     threshold,
     fillOpacity,
-    polygons: segmentsToPolygons(extractContour(grid, threshold)),
+    polygons: closePolarPolygons(
+      segmentsToPolygons(extractContour(grid, threshold)),
+      grid,
+      threshold,
+    ),
   }));
 }
 
-// Sample obscuration on a (lat, lon) grid covering the whole Earth.
-// grid[i][j] is obscuration at (lats[i], lons[j]); 0 outside the penumbra
-// or where the Sun is below the horizon.
-function computeFootprintGrid(time) {
-  const t = A.MakeTime(time);
-  const sun = A.GeoVector(A.Body.Sun, t, true);
-  const moon = A.GeoMoon(t);
+// When a contour wraps a pole (e.g. a deeply northern penumbra extending past
+// 90°N into all longitudes), marching squares produces no boundary cells in
+// the polar row — the contour is a single open curve circling the globe at
+// some lower latitude. Stitched naively it becomes a "polygon" of zero area
+// in lat/lon space, so Leaflet draws nothing inside even though the polar
+// cap is the actual penumbral region. Detect this case and append two
+// vertices along the pole to close the cap.
+function closePolarPolygons(polygons, grid, threshold) {
+  const topRow = grid.grid[grid.lats.length - 1];
+  const botRow = grid.grid[0];
+  const northInside = topRow.every(v => v > threshold);
+  const southInside = botRow.every(v => v > threshold);
+  return polygons.map(poly => {
+    const first = poly[0];
+    const last = poly[poly.length - 1];
+    if (Math.abs(last.lon - first.lon) < 270) return poly;
+    const pole = northInside ? 90 : (southInside ? -90 : null);
+    if (pole == null) return poly;
+    return [...poly, { lat: pole, lon: last.lon }, { lat: pole, lon: first.lon }];
+  });
+}
 
+// Sample obscuration on a (lat, lon) grid covering the whole Earth.
+// grid[i][j] is the *maximum* obscuration at (lats[i], lons[j]) over the
+// eclipse's full duration — so the footprint shows everywhere the eclipse
+// is visible at some point, not just where the Sun and Moon are close at the
+// peak instant. Without this, locations like Moscow (Sun already set by
+// peak but eclipsed earlier) would be excluded from the penumbra footprint.
+function computeFootprintGrid(peakTime, halfHours = 4, stepMinutes = 10) {
   const lats = []; for (let v = -90; v <= 90; v += LAT_STEP) lats.push(v);
   const lons = []; for (let v = -180; v <= 180; v += LON_STEP) lons.push(v);
 
   const grid = [];
-  for (let i = 0; i < lats.length; i++) {
-    grid[i] = new Array(lons.length);
-    for (let j = 0; j < lons.length; j++) {
-      grid[i][j] = obscurationAt(t, sun, moon, lats[i], lons[j]);
+  for (let i = 0; i < lats.length; i++) grid[i] = new Array(lons.length).fill(0);
+
+  const peakUt = A.MakeTime(peakTime).ut;
+  const nSteps = Math.round((halfHours * 60) / stepMinutes);
+  for (let k = -nSteps; k <= nSteps; k++) {
+    const ut = peakUt + (k * stepMinutes) / (60 * 24);
+    const t = A.MakeTime(new Date((ut + 10957.5) * 86400_000));
+    const sun = A.GeoVector(A.Body.Sun, t, true);
+    const moon = A.GeoMoon(t);
+    for (let i = 0; i < lats.length; i++) {
+      const row = grid[i];
+      for (let j = 0; j < lons.length; j++) {
+        const v = obscurationAt(t, sun, moon, lats[i], lons[j]);
+        if (v > row[j]) row[j] = v;
+      }
     }
   }
   return { lats, lons, grid };
