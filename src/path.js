@@ -52,6 +52,26 @@ export function shadowSampleAtTime(time) {
 }
 
 function sampleAt(t) {
+  const c = sampleCore(t);
+  if (!c) return { time: t, lat: null, lon: null, kind: "none", widthKm: 0 };
+
+  // The umbra/antumbra footprint on the ground is an ellipse — the cone's
+  // circular cross-section (radius r perpendicular to the shadow axis) is
+  // foreshortened by the Sun's altitude h at the intersection point. Its
+  // semi-axes are r perpendicular to the incidence plane and r/sin(h) in
+  // the incidence plane. The visible "path width" is measured perpendicular
+  // to the shadow's motion on the ground, which generally is not aligned
+  // with either ellipse axis — so we estimate the motion direction from a
+  // neighbour sample and project the ellipse onto the perpendicular.
+  const dtDays = 60 / 86400; // 1 minute
+  const cNext = sampleCore(A.MakeTime(utToDate(t.ut + dtDays))) ||
+                sampleCore(A.MakeTime(utToDate(t.ut - dtDays)));
+
+  const widthKm = perpHalfWidth(c, cNext);
+  return { time: t, lat: c.lat, lon: c.lon, kind: c.kind, widthKm };
+}
+
+function sampleCore(t) {
   // Sun and Moon in J2000 equatorial geocentric coords (AU). We use the
   // *apparent* Sun position (aberration corrected) because that's what
   // determines where the Moon's shadow falls from an observer's perspective:
@@ -80,12 +100,10 @@ function sampleAt(t) {
   const bQ = 2 * ((M.x*D.x + M.y*D.y) / a2 + M.z*D.z / c2);
   const cQ = (M.x*M.x + M.y*M.y) / a2 + M.z*M.z / c2 - 1;
   const disc = bQ*bQ - 4*aQ*cQ;
-  if (disc < 0) {
-    return { time: t, lat: null, lon: null, kind: "none", widthKm: 0 };
-  }
+  if (disc < 0) return null;
   const sqrtDisc = Math.sqrt(disc);
   const s = (-bQ - sqrtDisc) / (2 * aQ);
-  if (s <= 0) return { time: t, lat: null, lon: null, kind: "none", widthKm: 0 };
+  if (s <= 0) return null;
 
   const Pkm_eqd = add(M, scale(D, s));
 
@@ -98,15 +116,47 @@ function sampleAt(t) {
 
   const L = SMlen * R_MOON / (R_SUN - R_MOON);
   const kind = s < L ? "total" : "annular";
+  const r = R_MOON * Math.abs(1 - s / L);
 
-  // Half-width of the umbra (or antumbra) cross-section where the cone
-  // intersects the surface. The cone is parameterised so its radius is
-  // R_MOON at the Moon and 0 at the apex (s = L); past the apex the
-  // antumbra grows linearly. This is the perpendicular-to-path half-width
-  // of the totality / annularity strip on the ground.
-  const widthKm = R_MOON * Math.abs(1 - s / L);
+  return { lat: obs.latitude, lon: obs.longitude, kind, P: Pkm_eqd, D, r, L };
+}
 
-  return { time: t, lat: obs.latitude, lon: obs.longitude, kind, widthKm };
+function perpHalfWidth(c, cNext) {
+  // Outward ellipsoid normal at P (gradient of the implicit function).
+  const N = normalize({ x: c.P.x / (R_EQ*R_EQ), y: c.P.y / (R_EQ*R_EQ), z: c.P.z / (R_POL*R_POL) });
+  // Sun altitude: Sun lies in direction -D from P; sin(altitude) = (-D)·N.
+  const sinH = -dot(c.D, N);
+  if (sinH <= 1e-3) return c.r; // grazing — projection blows up; fall back
+
+  if (!cNext) return c.r / sinH; // no motion estimate — use the wider extreme
+
+  // Tangent-plane basis: e1 perpendicular to incidence plane (D × N), e2 in
+  // incidence plane on tangent plane (N × e1). Footprint ellipse semi-axes
+  // are r along e1 and r/sin(h) along e2.
+  const e1 = normalize(cross(c.D, N));
+  const e2 = cross(N, e1);
+
+  // Motion direction on ground: difference between consecutive sample
+  // positions in EQD, projected to the tangent plane at P.
+  const dP = sub(cNext.P, c.P);
+  const dPperp = sub(dP, scale(N, dot(dP, N)));
+  if (len(dPperp) < 1e-9) return c.r;
+  const v = normalize(dPperp);
+
+  // Decompose v in the (e1, e2) basis: v = (v·e1) e1 + (v·e2) e2. The
+  // direction perpendicular to motion in the tangent plane is the 90°
+  // rotation in this basis — it has e1-component (v·e2) and e2-component
+  // -(v·e1). The ellipse's support in that direction is the half-width.
+  const ve1 = dot(v, e1);
+  const ve2 = dot(v, e2);
+  const a = c.r;          // semi-axis along e1
+  const b = c.r / sinH;   // semi-axis along e2
+  return Math.sqrt(a*a*ve2*ve2 + b*b*ve1*ve1);
+}
+
+function normalize(v) { const k = 1 / len(v); return { x: v.x*k, y: v.y*k, z: v.z*k }; }
+function cross(a, b) {
+  return { x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x };
 }
 
 function utToDate(ut) {
