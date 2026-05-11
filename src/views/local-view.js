@@ -30,6 +30,13 @@ export class LocalView {
     this.svg.setAttribute("viewBox", "-1.5 -1.5 3 3");
     this.svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
     container.appendChild(this.svg);
+
+    // Altitude strip lives as an absolutely-positioned HTML overlay so its
+    // distance from the container's left edge is a fixed pixel count,
+    // independent of the main SVG's letterbox.
+    this.altInset = document.createElement("div");
+    this.altInset.className = "alt-inset";
+    container.appendChild(this.altInset);
   }
 
   showEclipse(eclipse, lat, lon, time = null) {
@@ -99,7 +106,7 @@ export class LocalView {
       this.svg.appendChild(line(-1.5, horizonY, 1.5, horizonY, `rgba(255,200,140,${0.7 * horizonFade})`, 0.015));
     }
 
-    drawAltitudeInset(this.svg, sunHor.altitude, moonHor.altitude);
+    drawAltitudeInset(this.altInset, sunHor.altitude, moonHor.altitude);
 
     // Status + numbers.
     let status;
@@ -114,11 +121,11 @@ export class LocalView {
     }
 
     const labelStyle = sunHor.altitude < -6 ? "#cdd9e6" : "#1a1410";
-    this.svg.appendChild(text(-0.7, 1.27, status, "0.14", labelStyle));
+    this.svg.appendChild(text(-0.7, 1.25, status, "0.14", labelStyle));
     const detail = sunHor.altitude > 0
       ? `obscuration ${(obscur * 100).toFixed(1)}%   ·   Sun alt ${sunHor.altitude.toFixed(1)}°`
       : `Sun alt ${sunHor.altitude.toFixed(1)}°   ·   Moon alt ${moonHor.altitude.toFixed(1)}°`;
-    this.svg.appendChild(text(-0.7, 1.44, detail, "0.11", labelStyle));
+    this.svg.appendChild(text(-0.7, 1.44, detail, "0.14", labelStyle));
   }
 }
 
@@ -129,41 +136,59 @@ export class LocalView {
 // altitudes; this is the always-visible horizon reference even when the
 // close-up view is centred on a Sun that's far below the horizon.
 
-function drawAltitudeInset(svg, sunAlt, moonAlt) {
-  const x = -1.42;
-  const w = 0.16;
-  const yTop = -1.25, yBot = 1.25;
-  const altToY = (a) => yTop + (1 - (a + 90) / 180) * (yBot - yTop);
-  const horizonY = altToY(0);
+function drawAltitudeInset(host, sunAlt, moonAlt) {
+  while (host.firstChild) host.removeChild(host.firstChild);
 
-  // Sky: a vertical gradient capturing day -> twilight -> night by altitude.
-  const gradId = "altSkyGrad";
-  const defs = document.createElementNS(SVG_NS, "defs");
-  defs.innerHTML = `
-    <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="${skyColor(90)}"/>
-      <stop offset="33%" stop-color="${skyColor(30)}"/>
-      <stop offset="66%" stop-color="${skyColor(6)}"/>
-      <stop offset="100%" stop-color="${skyColor(0)}"/>
-    </linearGradient>`;
-  svg.appendChild(defs);
+  // Map altitude -> CSS percent from top of strip. +90° = 0%, -90° = 100%.
+  const altToPct = (a) => (1 - (a + 90) / 180) * 100;
+  const horizonPct = altToPct(0);
 
-  svg.appendChild(rect(x, yTop, w, horizonY - yTop, `url(#${gradId})`));
-  svg.appendChild(rect(x, horizonY, w, yBot - horizonY, "#1a1410"));
-  svg.appendChild(line(x, horizonY, x + w, horizonY, "#dcb070", 0.012));
+  const sky = document.createElement("div");
+  sky.className = "alt-sky";
+  sky.style.top = "0";
+  sky.style.height = `${horizonPct}%`;
+  sky.style.background = `linear-gradient(to bottom, ${skyColor(90)} 0%, ${skyColor(30)} 33%, ${skyColor(6)} 66%, ${skyColor(0)} 100%)`;
+  host.appendChild(sky);
 
-  // Tick marks at ±30°, ±60°.
+  const ground = document.createElement("div");
+  ground.className = "alt-ground";
+  ground.style.top = `${horizonPct}%`;
+  ground.style.bottom = "0";
+  ground.style.background = "#1a1410";
+  host.appendChild(ground);
+
+  const horizon = document.createElement("div");
+  horizon.className = "alt-horizon";
+  horizon.style.top = `calc(${horizonPct}% - 0.5px)`;
+  host.appendChild(horizon);
+
   for (const tick of [-60, -30, 30, 60]) {
-    const ty = altToY(tick);
-    svg.appendChild(line(x, ty, x + 0.04, ty, "rgba(255,255,255,0.35)", 0.005));
+    const t = document.createElement("div");
+    t.className = "alt-tick";
+    t.style.top = `${altToPct(tick)}%`;
+    host.appendChild(t);
   }
 
-  // Sun & Moon position markers.
-  svg.appendChild(circle(x + w / 2, altToY(clamp(sunAlt, -90, 90)),  0.045, "#ffd95c"));
-  svg.appendChild(circle(x + w / 2, altToY(clamp(moonAlt, -90, 90)), 0.034, "#bbb"));
+  const sun = document.createElement("div");
+  sun.className = "alt-marker alt-sun";
+  sun.style.top = `${altToPct(clamp(sunAlt, -90, 90))}%`;
+  host.appendChild(sun);
 
-  svg.appendChild(text(x + w + 0.04, horizonY + 0.025, "horizon", "0.07", "#dcb070"));
-  svg.appendChild(text(x, yTop - 0.04, "altitude", "0.07", "#aab"));
+  const moon = document.createElement("div");
+  moon.className = "alt-marker alt-moon";
+  moon.style.top = `${altToPct(clamp(moonAlt, -90, 90))}%`;
+  host.appendChild(moon);
+
+  const horizLabel = document.createElement("div");
+  horizLabel.className = "alt-label";
+  horizLabel.style.top = `calc(${horizonPct}% + 2px)`;
+  horizLabel.textContent = "horizon";
+  host.appendChild(horizLabel);
+
+  const topLabel = document.createElement("div");
+  topLabel.className = "alt-label top";
+  topLabel.textContent = "altitude";
+  host.appendChild(topLabel);
 }
 
 // --- sky / disk colour --------------------------------------------------

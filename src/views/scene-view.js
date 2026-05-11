@@ -49,7 +49,7 @@ export class SceneView {
     const w = container.clientWidth || 800;
     const h = container.clientHeight || 400;
 
-    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.05, 5000);
+    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.005, 5000);
     this.camera.up.set(0, 0, 1);   // J2000 +Z = celestial north pole
     this.camera.position.set(2.5, -6, 2);
     this.camera.lookAt(0, 0, 0);
@@ -358,17 +358,20 @@ export class SceneView {
     if (!this.eclipse) return;
     const moonV = A.GeoMoon(this.eclipse.peak);
     const moonPos = new THREE.Vector3(moonV.x, moonV.y, moonV.z).multiplyScalar(AU_KM * DIST_SCALE);
-    // View from the Moon side, tilted 30° off the Moon-Earth line so the
-    // camera sits well outside the penumbra (~0.27° half-angle) and looks
-    // "down" at the scene. Tilt is around an axis perpendicular to both
-    // Moon-direction and the celestial pole, which lifts the camera above
-    // the equatorial plane and gives a 3/4 view of Earth and the cones.
+    // View from the Moon side, but yawed around the celestial pole and
+    // tilted up off the Moon-Earth line so the camera sits well outside the
+    // penumbra (~0.27° half-angle) and gives a 3/4 view of Earth and the
+    // cones. Small pitch keeps the angle close to from-the-side; the yaw
+    // around the pole adds a sideways component so the view isn't directly
+    // along the shadow axis.
     const moonDir = moonPos.clone().normalize();
     const polar = new THREE.Vector3(0, 0, 1);
     let perp = new THREE.Vector3().crossVectors(moonDir, polar);
     if (perp.lengthSq() < 1e-6) perp.set(1, 0, 0);
     perp.normalize();
-    const camDir = moonDir.clone().applyAxisAngle(perp, 30 * Math.PI / 180);
+    const camDir = moonDir.clone()
+      .applyAxisAngle(polar, 25 * Math.PI / 180)
+      .applyAxisAngle(perp, 15 * Math.PI / 180);
     this.camera.position.copy(camDir.multiplyScalar(moonPos.length() * 1.5 / 10));
     this.camera.lookAt(0, 0, 0);
   }
@@ -420,7 +423,13 @@ export class SceneView {
       this.camera.lookAt(0, 0, 0);
     };
     const zoomBy = (factor) => {
-      this.camera.position.multiplyScalar(factor);
+      const newPos = this.camera.position.clone().multiplyScalar(factor);
+      // Camera looks at Earth's center, so it must stay outside the surface
+      // by at least the near clipping plane — otherwise the front of Earth
+      // is clipped away and the user sees the inside.
+      const minDist = EARTH_RADIUS_W + this.camera.near + 0.002;
+      if (newPos.length() < minDist) newPos.setLength(minDist);
+      this.camera.position.copy(newPos);
       this.camera.lookAt(0, 0, 0);
     };
 

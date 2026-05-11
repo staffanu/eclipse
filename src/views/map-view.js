@@ -11,7 +11,7 @@ export class MapView {
 
     L.tileLayer(
       "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      { attribution: "© OpenStreetMap", maxZoom: 7 },
+      { attribution: "© OpenStreetMap", maxZoom: 14 },
     ).addTo(this.map);
 
     // Footprint layer is added before the main layer so the centerline,

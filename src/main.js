@@ -261,5 +261,7 @@ document.getElementById("more-backdrop")?.addEventListener("click", () => setMor
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
 // showEclipse() snaps the observer to the eclipse's peak point, so we don't
-// query geolocation on startup.
-safe(() => showEclipse(nextEclipseFrom(jan1OfYear(parseInt(els.yearInput.value, 10)))))();
+// query geolocation on startup. Start from "now" so the first eclipse shown
+// is today's (if any) or the next upcoming one, rather than the first
+// eclipse of the current calendar year.
+safe(() => showEclipse(nextEclipseFrom(new Date())))();
