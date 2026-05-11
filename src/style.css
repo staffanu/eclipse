@@ -71,6 +71,16 @@ body {
   align-items: center;
 }
 
+.control .row > input[type="date"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.control .row > button {
+  width: auto;
+  flex: 0 0 auto;
+}
+
 .control .hint {
   font-size: 11px;
   color: var(--muted);

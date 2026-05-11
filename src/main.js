@@ -201,13 +201,15 @@ function updateScrub() {
 
 function formatScrub(minutes, t) {
   const sign = minutes < 0 ? "−" : minutes > 0 ? "+" : "";
-  const m = Math.abs(minutes);
-  const hh = Math.floor(m / 60);
-  const mm = m % 60;
-  const offset = minutes === 0
+  const totalSec = Math.round(Math.abs(minutes) * 60);
+  const hh = Math.floor(totalSec / 3600);
+  const mm = Math.floor((totalSec % 3600) / 60);
+  const ss = totalSec % 60;
+  const pad = n => String(n).padStart(2, "0");
+  const offset = totalSec === 0
     ? "peak"
-    : hh ? `peak ${sign}${hh}h ${String(mm).padStart(2, "0")}m`
-         : `peak ${sign}${mm}m`;
+    : hh ? `peak ${sign}${hh}h ${pad(mm)}m ${pad(ss)}s`
+         : `peak ${sign}${mm}m ${pad(ss)}s`;
   const utc = t.toISOString().slice(11, 19) + " UTC";
   return `${offset} · ${utc}`;
 }
