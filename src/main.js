@@ -10,7 +10,8 @@ import { LocalView } from "./views/local-view.js";
 installOverride();
 
 const els = {
-  dateInput: document.getElementById("date-input"),
+  yearInput: document.getElementById("year-input"),
+  snappedDate: document.getElementById("snapped-date"),
   prev: document.getElementById("prev-eclipse"),
   next: document.getElementById("next-eclipse"),
   timeSlider: document.getElementById("time-slider"),
@@ -68,7 +69,7 @@ function showEclipse(eclipse) {
   const year = peakYear(eclipse);
   const { samples, peakIndex } = computeShadowPath(eclipse, { halfHours: 3, stepMinutes: 2 });
 
-  syncDateInput(eclipse);
+  syncYearInput(eclipse);
   map.showEclipse(eclipse, samples, year, peakIndex);
 
   // Compute the penumbral-footprint contour layers once per eclipse and
@@ -127,24 +128,28 @@ function peakYear(e) {
   return d.getUTCFullYear() + (d.getUTCMonth() + d.getUTCDate() / 31) / 12;
 }
 
-// Set the date input to the eclipse's peak date. The native date input only
-// accepts AD years 0001-9999; outside that range we leave it blank (the full
-// date is still shown in the info panel).
-function syncDateInput(eclipse) {
+// Reflect the snapped eclipse back to the year input plus a small label
+// showing the actual peak date (since the year alone hides which eclipse
+// within the year is shown).
+function syncYearInput(eclipse) {
   const d = eclipse.peak.date;
   const y = d.getUTCFullYear();
-  if (y >= 1 && y <= 9999) {
-    els.dateInput.value =
-      String(y).padStart(4, "0") + "-" +
-      String(d.getUTCMonth() + 1).padStart(2, "0") + "-" +
-      String(d.getUTCDate()).padStart(2, "0");
-  } else {
-    els.dateInput.value = "";
-  }
+  els.yearInput.value = String(y);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const ySigned = y < 0 ? `${-y} BCE` : String(y);
+  els.snappedDate.textContent =
+    `→ ${d.getUTCDate()} ${months[d.getUTCMonth()]} ${ySigned}`;
 }
 
 function refDate() {
-  return state.eclipse ? state.eclipse.peak.date : new Date(els.dateInput.value);
+  if (state.eclipse) return state.eclipse.peak.date;
+  return jan1OfYear(parseInt(els.yearInput.value, 10));
+}
+
+function jan1OfYear(y) {
+  const d = new Date(0);
+  d.setUTCFullYear(y, 0, 1);
+  return d;
 }
 
 function safe(fn) {
@@ -167,9 +172,10 @@ els.prev.addEventListener("click", safe(() => {
   if (e) showEclipse(e);
 }));
 
-els.dateInput.addEventListener("change", safe(() => {
-  if (!els.dateInput.value) return;
-  showEclipse(nextEclipseFrom(new Date(els.dateInput.value)));
+els.yearInput.addEventListener("change", safe(() => {
+  const y = parseInt(els.yearInput.value, 10);
+  if (!Number.isFinite(y)) return;
+  showEclipse(nextEclipseFrom(jan1OfYear(y)));
 }));
 
 els.obsLat.addEventListener("change", () => setObserver(+els.obsLat.value, +els.obsLon.value));
@@ -243,7 +249,7 @@ document.getElementById("more-toggle")?.addEventListener("click", () => {
 });
 
 // Initial eclipse — wrap so any failure shows in the UI rather than vanishing.
-safe(() => showEclipse(nextEclipseFrom(new Date(els.dateInput.value))))();
+safe(() => showEclipse(nextEclipseFrom(jan1OfYear(parseInt(els.yearInput.value, 10)))))();
 
 // If the browser will hand us the user's coordinates (cached or freshly
 // granted), use them as the default observer. Otherwise we keep the HTML

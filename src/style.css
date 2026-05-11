@@ -71,7 +71,8 @@ body {
   align-items: center;
 }
 
-.control .row > input[type="date"] {
+.control .row > input[type="date"],
+.control .row > input[type="number"]#year-input {
   flex: 1;
   min-width: 0;
 }
