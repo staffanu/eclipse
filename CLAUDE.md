@@ -18,7 +18,7 @@ Dependencies (`astronomy-engine`, `three`, `leaflet`) are pulled at runtime from
 
 ## Deployment
 
-`.github/workflows/pages.yml` publishes the repo root to GitHub Pages on push to `main` (and a long-lived feature branch). The repo root *is* the site root — `index.html` must stay at the top level.
+`.github/workflows/pages.yml` publishes the repo root to GitHub Pages on push to `main`. The repo root *is* the site root — `index.html` must stay at the top level.
 
 ## Architecture
 
