@@ -273,7 +273,9 @@ main {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    flex-shrink: 0;
   }
+  .header-buttons > button { flex-shrink: 0; }
   #sidebar-hide,
   #sidebar-show {
     display: inline-flex;
