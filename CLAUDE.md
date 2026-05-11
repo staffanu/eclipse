@@ -33,7 +33,7 @@ Entry point `src/main.js` wires three independent views to a shared `state` obje
 Three views in `src/views/`, each owning its own DOM root and exposing `showEclipse(...)` plus incremental update methods called by the time slider:
 
 - `map-view.js` — Leaflet map: centerline, ΔT uncertainty band, footprint contours, observer marker, shadow-center marker with UT tooltip.
-- `scene-view.js` — three.js Sun/Moon/Earth at real scale (only the Sun's distance is compressed; see commits).
+- `scene-view.js` — three.js Sun/Moon/Earth at real scale (only the Sun's distance is compressed; see commits). The 3D panel header has a "Shadow on surface" checkbox: when on, the umbra/antumbra/penumbra cone meshes are hidden and the Earth's fragment shader paints the shadow directly on the globe via a geometric ray-cone test (red spot for total, yellow for annular, grey penumbra ring).
 - `local-view.js` — Sun disk with Moon transit as seen from `state.observer`.
 
 Coordinate convention: longitudes coming from Leaflet click events may be outside [-180, 180] (worldCopyJump-wrapped copies). `setObserver` keeps the raw value for the marker position but stores `normalizeLon(rawLon)` in state and inputs.

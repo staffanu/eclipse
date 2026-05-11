@@ -118,7 +118,101 @@ export class SceneView {
     const earthMat = new THREE.MeshPhongMaterial({
       color: 0x1a4878, emissive: 0x031020, shininess: 8,
     });
+    // Shadow-on-surface mode: each fragment tests whether it lies inside
+    // the umbra/penumbra cone using a linear (not angular) geometric test.
+    // Distances are world units (0.02–5), so float32 precision is fine —
+    // earlier angular attempts ran into precision issues at ~0.005 rad.
+    // The umbra cone shrinks from radius R_moon at the Moon to 0 at the
+    // umbral apex at axial distance L. The penumbra cone grows at the same
+    // rate, from R_moon at the Moon outward. The antumbra is the umbra
+    // cone's analytical continuation past the apex.
+    earthMat.userData.shadowUniforms = {
+      uShadowMode:  { value: 0 },
+      uMoonPos:     { value: new THREE.Vector3() },
+      uShadowAxis:  { value: new THREE.Vector3(0, 0, 1) },
+      uSunDir:      { value: new THREE.Vector3(0, 0, 1) },
+      uMoonRadius:  { value: MOON_RADIUS_W },
+      uUmbraLen:    { value: 1.0 },     // overwritten per-eclipse
+    };
+    earthMat.onBeforeCompile = (shader) => {
+      const u = earthMat.userData.shadowUniforms;
+      shader.uniforms.uShadowMode = u.uShadowMode;
+      shader.uniforms.uMoonPos    = u.uMoonPos;
+      shader.uniforms.uShadowAxis = u.uShadowAxis;
+      shader.uniforms.uSunDir     = u.uSunDir;
+      shader.uniforms.uMoonRadius = u.uMoonRadius;
+      shader.uniforms.uUmbraLen   = u.uUmbraLen;
+
+      shader.vertexShader =
+        "varying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\n" +
+        shader.vertexShader
+          .replace(
+            "#include <begin_vertex>",
+            "#include <begin_vertex>\nvWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;",
+          )
+          .replace(
+            "#include <beginnormal_vertex>",
+            "#include <beginnormal_vertex>\nvWorldNormal = normalize(mat3(modelMatrix) * objectNormal);",
+          );
+
+      shader.fragmentShader =
+        "varying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\n" +
+        "uniform float uShadowMode;\nuniform vec3 uMoonPos;\nuniform vec3 uShadowAxis;\n" +
+        "uniform vec3 uSunDir;\nuniform float uMoonRadius;\nuniform float uUmbraLen;\n" +
+        shader.fragmentShader.replace(
+          "#include <opaque_fragment>",
+          `
+          if (uShadowMode > 0.5) {
+            vec3  d      = vWorldPos - uMoonPos;
+            float axial  = dot(d, uShadowAxis);
+            if (axial > 0.0) {
+              // Perpendicular distance from the shadow axis. Computed as
+              // length(d - axial*axis) rather than sqrt(|d|² − axial²) to
+              // avoid catastrophic cancellation: both |d|² and axial² are
+              // ~22 here while the answer we want is ~1e−6, so the naive
+              // form loses every meaningful digit to float32 noise.
+              vec3  perpVec = d - axial * uShadowAxis;
+              float perp    = length(perpVec);
+              // Linear cone radii. t = axial / umbraLen ∈ [0, ~1.1] across
+              // the relevant region between Moon and Earth's far side.
+              float t       = axial / uUmbraLen;
+              float penR    = uMoonRadius * (1.0 + t);   // penumbra grows
+              float umbR    = uMoonRadius * abs(1.0 - t); // umbra shrinks then grows past apex
+              bool  pastApex = t > 1.0;
+              float darken  = 0.0;
+              vec3  tint = vec3(0.0);
+              float tintAmt = 0.0;
+              if (perp < penR) {
+                // Filled-patch penumbra: uniform dimming across the whole
+                // ring with a thin soft edge. The constant in front is the
+                // actual perceived dimming everywhere inside the patch.
+                float pen = 1.0 - perp / penR;
+                darken = 0.45 * smoothstep(0.0, 0.05, pen);
+                if (perp < umbR) {
+                  // Tint the umbra in a vivid colour instead of darkening it,
+                  // so it stands out against dark ocean (where a black-on-blue
+                  // umbra disappears). Red for total eclipses, yellow for
+                  // annular — same colour split the map view's headers use to
+                  // label total vs annular paths. The crisp soft edge keeps
+                  // the spot well-defined even when it's only a few pixels.
+                  tint    = pastApex ? vec3(0.95, 0.78, 0.20)   // annular: yellow
+                                     : vec3(0.95, 0.30, 0.20); // total:   red
+                  tintAmt = smoothstep(umbR, umbR * 0.6, perp);
+                }
+              }
+              // Only apply the effect on the lit side — shadow should never
+              // appear on the night hemisphere.
+              float lit = smoothstep(0.0, 0.05, dot(normalize(vWorldNormal), uSunDir));
+              outgoingLight *= 1.0 - min(0.97, darken) * lit;
+              outgoingLight = mix(outgoingLight, tint, tintAmt * lit);
+            }
+          }
+          #include <opaque_fragment>
+          `,
+        );
+    };
     this.earth = new THREE.Mesh(earthGeo, earthMat);
+    this.earthMat = earthMat;
 
     // Try to load a public Earth texture so continents are visible — that's
     // the only way the user can perceive Earth rotating in the scene. We
@@ -317,6 +411,8 @@ export class SceneView {
     penFadeUniforms.uFadeStart.value = penLen_w / 2 - penExtraLen_w - EARTH_RADIUS_W * 0.8;
     penFadeUniforms.uFadeEnd.value   = penLen_w / 2;
     this._L_w = L_w;   // cached so updateForTime can place the antumbra apex
+    // The shader-shadow path uses the umbra length to derive cone radii.
+    this.earthMat.userData.shadowUniforms.uUmbraLen.value = L_w;
 
     this.updateForTime(eclipse.peak.date);
     this._fitCamera();
@@ -361,6 +457,25 @@ export class SceneView {
     // Time at this instant.
     const sidereal = A.SiderealTime(t);
     this.earth.rotation.z = sidereal * Math.PI / 12;
+
+    // Feed the shader-shadow path: Moon position, shadow axis (Sun → Moon
+    // direction extended past), and Sun direction (for lit-side culling).
+    // These are the same vectors used to place the cone meshes, so the
+    // shader-projected shadow lines up with the cone geometry exactly.
+    const su = this.earthMat.userData.shadowUniforms;
+    su.uMoonPos.value.copy(moonPos);
+    su.uShadowAxis.value.copy(shadowDir);
+    su.uSunDir.value.copy(sunDir);
+  }
+
+  // Toggle the "shadow on surface" render mode. When on, the cones are
+  // hidden and the Earth's fragment shader paints the shadow directly on
+  // the planet's surface using a geometric ray-cone test.
+  setSurfaceShadowMode(on) {
+    this.umbra.visible    = !on;
+    this.antumbra.visible = !on;
+    this.penumbra.visible = !on;
+    this.earthMat.userData.shadowUniforms.uShadowMode.value = on ? 1 : 0;
   }
 
   _fitCamera() {

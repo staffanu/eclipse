@@ -221,6 +221,26 @@ main {
   color: var(--muted);
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.header-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+}
+.header-toggle input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
 }
 
 #map, #scene, #local {

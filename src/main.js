@@ -23,6 +23,7 @@ const els = {
   dtInfo: document.getElementById("dt-info"),
   mapHeader: document.getElementById("map-header"),
   showFootprint: document.getElementById("show-footprint"),
+  surfaceShadow: document.getElementById("surface-shadow"),
 };
 
 const state = {
@@ -211,6 +212,10 @@ els.obsLon.addEventListener("change", () => setObserver(+els.obsLat.value, +els.
 els.showFootprint.addEventListener("change", safe(() => {
   state.showFootprint = els.showFootprint.checked;
   map.showFootprint(state.footprintLayers, state.showFootprint);
+}));
+
+els.surfaceShadow.addEventListener("change", safe(() => {
+  scene.setSurfaceShadowMode(els.surfaceShadow.checked);
 }));
 
 els.timeSlider.addEventListener("input", safe(() => {
