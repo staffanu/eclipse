@@ -81,12 +81,14 @@ body {
   flex: 0 0 auto;
 }
 
-.control .hint {
+.control .hint,
+#date-hint {
   font-size: 11px;
   color: var(--muted);
   margin: 6px 0 0;
   line-height: 1.4;
 }
+#date-hint { margin: 0 0 14px; }
 
 input, button {
   background: var(--bg);
@@ -265,8 +267,11 @@ main {
   #sidebar footer { display: none; }
 
   /* Sidebar hide / show toggle so the user can collapse all controls
-     (date nav included) and give the panels the whole screen. */
-  #sidebar-hide {
+     (date nav included) and give the panels the whole screen.
+     Both buttons are 26x26 icon buttons pinned to the top-right corner
+     so the toggle stays in the same spot as the user taps it. */
+  #sidebar-hide,
+  #sidebar-show {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -274,9 +279,19 @@ main {
     padding: 0;
     font-size: 18px;
     line-height: 1;
+    border-radius: 4px;
+  }
+  #sidebar-hide {
+    position: fixed;
+    top: 6px;
+    right: 6px;
+    z-index: 1000;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
   }
   body.sidebar-hidden #sidebar { display: none; }
-  body.sidebar-hidden #sidebar-show { display: block; }
+  body.sidebar-hidden #sidebar-show { display: inline-flex; }
   #sidebar-show {
     position: fixed;
     top: 6px;
@@ -285,9 +300,6 @@ main {
     background: var(--panel);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 6px 10px;
-    font-size: 12px;
-    border-radius: 4px;
   }
 
   /* "More options" toggle: hides observer, footprint switch, info,
