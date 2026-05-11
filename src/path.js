@@ -29,19 +29,55 @@ export function computeShadowPath(eclipse, opts = {}) {
   const halfHours = opts.halfHours ?? 3.0;
   const stepMinutes = opts.stepMinutes ?? 2.0;
   const peakUt = eclipse.peak.ut;
-  const samples = [];
+  const raw = [];
   const nSteps = Math.round((halfHours * 60) / stepMinutes);
-  let peakIndex = 0;
-  let bestDt = Infinity;
 
   for (let i = -nSteps; i <= nSteps; i++) {
     const ut = peakUt + (i * stepMinutes) / (60 * 24);
     const t = A.MakeTime(utToDate(ut));
-    samples.push(sampleAt(t));
-    const dt = Math.abs(ut - peakUt);
-    if (dt < bestDt) { bestDt = dt; peakIndex = samples.length - 1; }
+    raw.push(sampleAt(t));
+  }
+
+  // The shadow axis snaps on/off Earth between fixed time steps, so the first
+  // and last valid samples sit a fraction of a step before the true
+  // ingress/egress. Bisect each valid↔invalid transition to insert one extra
+  // sample at the sub-step terminus, so the rendered band stops where the
+  // antumbra actually leaves Earth instead of at the previous 2-min tick.
+  const samples = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (i > 0) {
+      const prev = raw[i - 1], cur = raw[i];
+      const pv = prev.lat != null, cv = cur.lat != null;
+      if (pv !== cv) {
+        const edge = bisectEdge(pv ? prev.time.ut : cur.time.ut,
+                                pv ? cur.time.ut  : prev.time.ut);
+        if (edge) samples.push(edge);
+      }
+    }
+    samples.push(raw[i]);
+  }
+
+  let peakIndex = 0, bestDt = Infinity;
+  for (let i = 0; i < samples.length; i++) {
+    if (samples[i].lat == null) continue;
+    const dt = Math.abs(samples[i].time.ut - peakUt);
+    if (dt < bestDt) { bestDt = dt; peakIndex = i; }
   }
   return { samples, peakIndex };
+}
+
+// Binary-search in UT between a valid and an invalid time to find the moment
+// the shadow axis is about to leave (or just arrived on) Earth, then return a
+// fully-populated sample at that moment. 14 iterations narrow a 2-minute
+// bracket to ~0.01 s, well below any rendering precision.
+function bisectEdge(validUt, invalidUt) {
+  let lo = validUt, hi = invalidUt;
+  for (let k = 0; k < 14; k++) {
+    const mid = (lo + hi) / 2;
+    const c = sampleCore(A.MakeTime(utToDate(mid)));
+    if (c) lo = mid; else hi = mid;
+  }
+  return sampleAt(A.MakeTime(utToDate(lo)));
 }
 
 // Compute the shadow-center sample at an arbitrary instant — used by the
