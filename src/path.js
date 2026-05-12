@@ -54,7 +54,15 @@ export function computeShadowPath(eclipse, opts = {}) {
       if (pv !== cv) {
         const edge = bisectEdge(pv ? prev.time.ut : cur.time.ut,
                                 pv ? cur.time.ut  : prev.time.ut);
-        if (edge) samples.push(edge);
+        if (edge) {
+          // At ingress/egress the Sun is on the horizon, so the footprint
+          // ellipse's in-plane semi-axis (r / sin h) diverges and the band
+          // would balloon into a huge tail. Keep the bisected *position*
+          // (that's why we bisect) but inherit the width from the adjacent
+          // in-grid sample, where the geometry is well-conditioned.
+          edge.widthKm = (pv ? prev : cur).widthKm;
+          samples.push(edge);
+        }
       }
     }
     samples.push(raw[i]);
